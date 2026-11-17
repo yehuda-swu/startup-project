@@ -5,3 +5,10 @@
 .authaside .brand img{width:76px!important;height:76px!important;max-width:76px!important;max-height:76px!important}
 @media(max-width:900px){.authwrap{grid-template-columns:1fr}.authaside{min-height:auto;gap:22px;padding:28px}.authaside .brand img{width:62px!important;height:62px!important}.authmain{min-height:54vh;padding:36px 22px}.authaside h1{font-size:36px;margin:15px 0}.authaside p{line-height:1.6}}
 @media(max-width:650px){.brand{font-size:16px}.brand small{font-size:8px;letter-spacing:.4px}.topbar .brand img{width:47px!important;height:47px!important;max-width:47px!important;max-height:47px!important}.authaside .brand img{width:56px!important;height:56px!important;max-width:56px!important;max-height:56px!important}.authaside h1{font-size:31px}.authaside{padding:22px}.authmain{padding:30px 18px}.authbox h2{font-size:25px}.authaside .brand{padding:5px 9px 5px 5px}}
+
+/* Private team register */
+.membernames{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
+.memberchip{display:inline-flex;align-items:center;border:1px solid #d5e8f5;background:#f3f9ff;color:#205574;border-radius:999px;padding:6px 11px;font-size:12px;font-weight:700;max-width:100%;overflow-wrap:anywhere}
+.roster-header{margin-top:15px}
+.roster-header .membernames{margin-top:6px}
+.memberlist-small{font-size:12px;color:#456b82;line-height:1.5;min-width:120px;display:block;max-width:270px}

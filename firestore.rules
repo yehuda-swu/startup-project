@@ -89,19 +89,22 @@ service cloud.firestore {
         validStream(request.resource.data.stream) &&
         managesStream(request.resource.data.stream) &&
         request.resource.data.keys().hasOnly([
-          'name','cohort','stream','category','dilemma','memberUids',
+          'name','cohort','stream','category','dilemma','memberNames','memberUids',
           'supervisorUids','createdBy','createdAt'
         ]) &&
         request.resource.data.name is string && request.resource.data.name.size() > 0 &&
+        request.resource.data.memberNames is list && request.resource.data.memberNames.size() <= 12 &&
         request.resource.data.memberUids == [] &&
         request.resource.data.supervisorUids is list &&
         request.resource.data.createdBy == me() &&
         (mainAdmin() || me() in request.resource.data.supervisorUids);
-      allow update: if (mainAdmin() && teamExists(resource.data.teamId)) || (
+      allow update: if mainAdmin() || (
         scopedAdmin() && resource.data.get('stream','') == myStream() &&
         request.resource.data.get('stream','') == resource.data.get('stream','') &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberUids']) &&
-        request.resource.data.memberUids is list
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberUids','memberNames']) &&
+        request.resource.data.memberUids is list &&
+        request.resource.data.get('memberNames',[]) is list &&
+        request.resource.data.get('memberNames',[]).size() <= 12
       );
       allow delete: if mainAdmin();
 

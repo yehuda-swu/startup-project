@@ -7,7 +7,7 @@
   <meta name="description" content="StandWithUs UK StartUp Project Portal">
   <title>StartUp | Project Portal</title>
   <link rel="icon" href="favicon.png?v=3" type="image/png">
-  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="styles.css?v=5">
   <style>
     /* Essential fallback styles if a previous stylesheet is cached */
     .brandlogo{width:64px!important;height:64px!important;max-width:64px!important;max-height:64px!important;object-fit:contain!important;flex-shrink:0!important}
@@ -21,7 +21,7 @@
   <script>
    (function () {
      const root=document.getElementById('app');
-     const logo='<img src="logo.png?v=4" width="76" height="76" class="brandlogo" style="width:76px;height:76px;max-width:76px;max-height:76px;object-fit:contain" alt="StartUp logo">';
+     const logo='<img src="logo.png?v=5" width="76" height="76" class="brandlogo" style="width:76px;height:76px;max-width:76px;max-height:76px;object-fit:contain" alt="StartUp logo">';
      function escapeHTML(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
      window.StartUpShowError=function(heading,message,error){
        if(!root.querySelector('.loading') && !root.querySelector('[data-portal-error]'))return;
@@ -59,7 +59,7 @@
   </script>
   <script type="module">
     if(location.protocol!=='file:'){
-      try{ await import('./app.js?v=4'); }
+      try{ await import('./app.js?v=5'); }
       catch(error){
         console.error('Failed to load StartUp application:',error);
         const m=String(error?.message||'');
