@@ -1,136 +1,109 @@
-# StartUp Project Portal
+# StartUp Project Portal | Free Spark Edition
 
-A private student and supervisor workspace for the StandWithUs UK StartUp Challenge.
+This edition uses **Firebase Authentication**, **Cloud Firestore** and **GitHub Pages** only. It does **not** need Firebase Cloud Storage or the Blaze billing plan. Students share controlled links to presentations stored outside Firebase.
 
-Built as a static GitHub Pages site using Firebase Authentication, Cloud Firestore and Cloud Storage. No build command is required.
+## What the portal does
 
-## Features
+- Private student team workspaces and progress across six project stages
+- Research notes and source links
+- Project plans and progress journals
+- Secure external document and presentation links
+- Assigned supervisor feedback
+- Administrator team creation, account roles and membership approvals
 
-* Student accounts with administrator approved team membership.
-* Administrator tools to create teams, assign supervisors, approve students and manage account roles.
-* Six project stages: Discover, Investigate, Innovate, Present and Review, Refine, Pitch.
-* Collaborative StartUp project plan and progress status.
-* Research links with notes and citations.
-* Team progress journal, milestones and questions.
-* PDF, PowerPoint, Word and image uploads up to 15 MB.
-* Google Slides and other online presentation links.
-* Supervisor feedback visible to the assigned team.
-* Team specific Firestore and Storage security rules.
+## What it does not do
 
-## IMPORTANT: create a NEW Firebase project
+- No direct uploads of PDFs, PowerPoint files or images to Firebase
+- No documents stored in Firestore
+- Google Drive, OneDrive and Canva sharing permissions must be configured **separately**. Firestore permissions do not protect external links.
 
-We recommend a dedicated project for StartUp, rather than reusing the existing What's the Secret? project. Applying these security rules to another project would replace its current rules and could break its existing application.
+## Firebase setup | Free Spark plan
 
-### 1. Create the Firebase project
+1. Open https://console.firebase.google.com/ and create a **new project** for StartUp. Keep the **Spark** plan and do not link a billing account.
+2. On Project Overview, click the **Web app** icon `</>` to register a web app. Firebase Hosting is not required. Copy the web app configuration.
+3. Open `firebaseConfig.js` and replace the example values with the matching fields. Preserve `export const firebaseConfig = {` at the top. The client web configuration is public; NEVER include any Firebase Admin SDK service account keys.
+4. Go to **Authentication > Sign in method** and enable **Email/Password**.
+5. Go to **Firestore Database > Create database**. Choose **Standard edition**, an appropriate UK or European region where supported, and **production mode**.
+6. Go to **Firestore Database > Rules**, replace the initial rules with the contents of `firestore.rules`, then press **Publish**. Uploading the rules file to GitHub alone does not deploy these rules.
+7. Do **not** turn on Cloud Storage. Do **not** upgrade to Blaze. There is no `storage.rules` file in this edition.
+8. Go to **Authentication > Settings > Authorised domains** and add the GitHub Pages hostname, for example `yehuda-swu.github.io` (hostname only, no `https://` and no repository path).
 
-1. Visit https://console.firebase.google.com/ and create a project, for example `startup-project-portal`.
-2. Add a web app in Project settings > Your apps.
-3. Copy the Firebase web configuration object into `firebaseConfig.js` by replacing the example values. Do not paste an admin SDK key or service account credential.
-4. Under Authentication > Sign in method, enable **Email/Password**.
-5. Create the default Cloud Firestore database (Standard edition).
-6. Enable Cloud Storage for Firebase and create its bucket. **Cloud Storage requires the Blaze pay as you go plan**, even if use stays within the no cost allowance. Enable billing alerts and budgets.
-7. Under Authentication > Settings > Authorised domains, add `yehuda-swu.github.io` (or your own GitHub Pages hostname). Add any custom domain too.
-
-### 2. Apply security rules
-
-The Firebase console is where rules become active. Merely uploading `firestore.rules` and `storage.rules` to GitHub will NOT deploy them.
-
-1. Open Firebase console > Firestore Database > Rules.
-2. Replace the existing rules with the contents of `firestore.rules`; publish.
-3. Open Firebase console > Storage > Rules.
-4. Replace the existing rules with the contents of `storage.rules`; publish.
-5. When prompted, approve the Firebase Storage permission to use Firestore documents in its rules. This allows private team file access. Reads made by these rules can count towards Firestore billing.
-
-**Do not use open test mode rules in production.**
-
-### 3. Deploy to GitHub Pages
+## GitHub Pages setup
 
 1. Create a new GitHub repository, for example `startup-project-portal`.
-2. Upload the contents of this ZIP to the repository root. The file `index.html` must be at the root, not inside a folder.
-3. Open GitHub repository Settings > Pages.
-4. Choose Deploy from a branch > `main` > `/ (root)` > Save.
-5. Your site will be at `https://YOUR_USERNAME.github.io/startup-project-portal/`.
-6. Check that your Firebase Authentication authorised domains includes `YOUR_USERNAME.github.io`.
+2. Upload the **contents** of this ZIP to the root of the repository. `index.html` must be at the root.
+3. Open **Settings > Pages > Deploy from a branch**, then choose `main`, `/ (root)`, and **Save**.
+4. Open the URL supplied by GitHub Pages. Use the live HTTPS site, not `index.html` opened from a downloaded ZIP.
+5. `preview.html` is a standalone design preview and does not access Firebase.
 
-Or use Git commands from your local repository:
+Suggested GitHub commit message:
 
-```bash
-git add .
-git commit -m "Launch StartUp project portal with Firebase team workspaces"
-git push origin main
-```
+    Use free Firebase Spark plan for StartUp project portal
 
-### 4. Bootstrap the first administrator
+Optional local Git commands:
 
-1. Open the deployed portal and choose **New student? Create an account**. Register with the administrator's real email address and a strong password.
-2. In Firebase Console > Authentication > Users, locate that account and copy its **User UID**.
-3. In Firestore Database > Data > `users`, open the document whose ID is that UID.
-4. Change only the `role` string field from `student` to `admin`.
-5. Sign out and sign in again. The **Admin** dashboard should now be visible.
+    git add .
+    git commit -m "Use free Firebase Spark plan for StartUp project portal"
+    git push origin main
 
-The first administrator should be a trusted adult member of staff. Do not allow students to hold admin accounts.
+## Create the administrator account
 
-### 5. Add supervisors and student teams
+1. On the live website, create an account with a trusted staff email address.
+2. Open **Firebase Authentication > Users** and copy the new user's UID.
+3. In **Firestore Database > Data > users**, open the document whose ID matches that UID.
+4. Edit the `role` string field from `student` to `admin` and save.
+5. Sign out and sign back in to access the administrator dashboard.
+6. Other staff register normally. The administrator can change their role to `supervisor` and assign them to teams.
+7. Students register, request team membership and wait for administrator approval.
 
-1. Supervisors create ordinary accounts from the portal.
-2. The administrator opens **Admin** > Registered people and promotes these users to **supervisor**.
-3. The administrator creates a team and selects a supervisor or assigns one afterwards.
-4. Students create their own accounts and use **Join a team** to request their team's workspace.
-5. The administrator approves each request after verifying that the student really belongs to the selected team.
-6. Students can then work in their private team workspace, while supervisors can view and comment on their assigned groups.
+The first administrator must be approved manually in Firebase Console; this cannot be done by the registration form.
 
-## Files
+## How students submit presentations
+
+1. Create a document or presentation in a school approved Google Drive, OneDrive or similar account.
+2. Use the document's **Share** menu to invite the team members and the assigned educator by their email addresses. Select Viewer or Commenter as appropriate; avoid public sharing where pupil data is involved.
+3. Copy the document link.
+4. In the portal, open the team's **Presentations** tab and save the document name and secure link.
+5. Educators open the link using their authorised accounts and share feedback in the portal.
+
+This method saves links in Firestore, not the files themselves. If a team grants the wrong permissions in Drive or OneDrive, the portal cannot correct those permissions. Test access with the educator's account.
+
+## Safeguarding and privacy
+
+- Use organisationally approved storage and sharing methods for student work.
+- Avoid sharing pupils' documents with "anyone with the link" or on public sites.
+- Verify team membership and roles before approving accounts.
+- Do not use this prototype to record medical, safeguarding or other sensitive personal details.
+- Establish a retention and deletion policy, and review UK GDPR and safeguarding arrangements before inviting pupils.
+- Test that unauthorised accounts cannot read team data, and that only assigned supervisors can post feedback.
+- The first version does not include version history, automatic archiving, account deletion or notifications.
+
+## Testing checklist
+
+- [ ] Website renders without a persistent spinner
+- [ ] Firebase web configuration has been inserted
+- [ ] Authentication is enabled and authorised domain added
+- [ ] Firestore database created and security rules published
+- [ ] First administrator profile has `role = admin`
+- [ ] Team and supervisor accounts can be created and assigned
+- [ ] Students can request access and receive approval
+- [ ] Students can save research, progress updates and their project plan
+- [ ] A document link can be shared, opened and removed
+- [ ] Supervisors can leave feedback
+- [ ] A different team's student cannot access private team records
+- [ ] Project remains on Spark and Storage remains disabled
+
+## Included files
 
 | File | Purpose |
 | --- | --- |
-| `index.html` | Main HTML page |
-| `styles.css` | Responsive design and layout |
-| `app.js` | Application logic and Firebase integration |
-| `firebaseConfig.js` | Your public Firebase web app settings |
-| `firestore.rules` | Database access permissions |
-| `storage.rules` | Private team file access permissions |
-| `favicon.svg` | Simple StartUp icon |
-| `README.md` | Setup and deployment instructions |
+| `index.html` | Website and loading fallback |
+| `styles.css` | Site appearance |
+| `app.js` | Portal application code |
+| `firebaseConfig.js` | Firebase web app configuration placeholders |
+| `firestore.rules` | Firebase database access rules |
+| `preview.html` | Illustrative visual preview |
+| `favicon.svg` | Browser icon |
+| `README.md` | These instructions |
 
-## Access model
-
-* **Administrator:** All project teams, user roles, team assignments and membership approvals.
-* **Supervisor:** Read and contribute to assigned workspaces, review submitted files, leave feedback.
-* **Student:** Read and contribute to their approved team, post research, update stage progress and share files.
-* **Unapproved student:** Can view published team names and request access but cannot read team content.
-
-## Safety, privacy and deployment checks
-
-The portal is designed for pupils. Before actual student use, the organisation should review it for safeguarding, data protection, retention periods, account recovery, access controls and appropriate parental information where applicable.
-
-* Only collect the minimum necessary personal data. This prototype collects name and email address for access management.
-* Test account permissions with multiple non privileged student accounts before launch.
-* Ask students not to upload personal, medical, safeguarding or other sensitive information.
-* Administrators should verify team membership before approval.
-* Direct Firebase Storage download URLs can be shared by anyone who receives them, even if Firestore permissions would otherwise prevent access. Do not treat these URLs as permanently private. Consider a server based authenticated download service before storing sensitive material.
-* Linked Google Slides or Canva presentations obey the sharing permissions of their own provider, not Firebase. Review their access settings before sharing.
-* This first version does not implement notifications, version history, administrator file deletion or automatic account archiving.
-* A separate year end retention and deletion policy should be established before deployment.
-* Configure Firebase budget alerts and usage limits where available.
-* Do not upload secret API keys, service account JSON files or private credentials into a public GitHub repository.
-
-## Validation checklist before inviting students
-
-- [ ] Firebase configuration updated
-- [ ] Email/Password authentication enabled
-- [ ] Firestore and Storage created
-- [ ] Both rulesets published
-- [ ] Storage and Firestore rules permission granted
-- [ ] GitHub Pages site loads on HTTPS
-- [ ] Administrator account bootstrapped
-- [ ] Supervisor account promoted and assigned
-- [ ] Student access request successfully approved
-- [ ] Student cannot open another team's workspace
-- [ ] Student can save research, journal updates and project stages
-- [ ] Student can upload a test PDF and supervisor can access it
-- [ ] Supervisor can post feedback and student can see it
-- [ ] Public and unauthorised users cannot access Firestore data
-
-## Technology notes
-
-The app uses the Firebase JavaScript modular CDN at version 13.3.0, released November 2026. Firebase configuration values such as `apiKey` and `projectId` identify the web application; permissions are enforced by Firebase Authentication and the accompanying Firestore and Storage rules, not by hiding the configuration file.
+The application has been checked for JavaScript syntax and ZIP contents. Firebase login and database operations must be tested against your project after deployment.

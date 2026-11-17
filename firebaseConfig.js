@@ -1,10 +1,8 @@
-// Replace these example values with the WEB APP configuration from YOUR Firebase project.
-// Firebase web configuration is public. Never add admin SDK private keys here.
 export const firebaseConfig = {
-  apiKey: "PASTE_API_KEY",
-  authDomain: "PASTE_PROJECT_ID.firebaseapp.com",
-  projectId: "PASTE_PROJECT_ID",
-  storageBucket: "PASTE_PROJECT_ID.firebasestorage.app",
-  messagingSenderId: "PASTE_MESSAGING_SENDER_ID",
-  appId: "PASTE_APP_ID"
+  apiKey: "AIzaSyBd2tgbqh5xF8CIOwFscDboQFfB_ayYppQ",
+  authDomain: "startup-project-portal.firebaseapp.com",
+  projectId: "startup-project-portal",
+  storageBucket: "startup-project-portal.firebasestorage.app",
+  messagingSenderId: "36282018467",
+  appId: "1:36282018467:web:c713777aaf4ee5649aad16"
 };

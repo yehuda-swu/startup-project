@@ -12,6 +12,49 @@
 <body>
   <div id="app"><div class="loading"><span class="spinner"></span><p>Opening the StartUp portal…</p></div></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.js"></script>
+  <script>
+    (function () {
+      const root = document.getElementById('app');
+      let finished = false;
+      const screen = (heading, message, isLocal) => {
+        if (finished || !root.querySelector('.loading')) return;
+        finished = true;
+        root.innerHTML = `
+          <main class="authwrap">
+            <section class="authaside">
+              <div class="brand"><span class="brandmark">S</span><span>StartUp<small>StandWithUs UK · Project Portal</small></span></div>
+              <div><div class="eyebrow" style="color:#ace7ff">STARTUP 2026/27</div><h1>Research. Create.<br>Make an impact.</h1>
+              <p>A place for teams to develop ideas, share research and learn from their supervisors.</p></div>
+              <div>DISCOVER · INVESTIGATE · INNOVATE · PITCH</div>
+            </section>
+            <section class="authmain"><div class="authbox">
+              <div class="eyebrow">${isLocal ? 'Visual preview' : 'Connection help'}</div>
+              <h2>${heading}</h2><p>${message}</p>
+              <a class="btn primary" href="preview.html">View the example team workspace</a>
+              ${isLocal ? '' : '<a class="btn outline" href="index.html" style="margin-top:12px">Try opening the portal again</a>'}
+              <div class="alert" style="margin-top:22px">The visual preview does not need Firebase. To enable real team accounts, research sharing and document links, publish this website on GitHub Pages and complete the Firebase setup in README.md.</div>
+            </div></section>
+          </main>`;
+      };
+      if (window.location.protocol === 'file:') {
+        screen('Open the project preview', 'You are viewing the downloaded website files. The live portal needs an HTTPS website and Firebase configuration. You can still explore the example workspace now.', true);
+        return;
+      }
+      const module = document.createElement('script');
+      module.type = 'module';
+      module.src = 'app.js';
+      module.onerror = () => screen('The portal could not start', 'A required application script could not be loaded. This sometimes happens in restricted file previews or when internet access is unavailable.', false);
+      document.body.appendChild(module);
+      window.addEventListener('error', event => {
+        if (event.target === window) screen('The portal could not start', 'An application error prevented the website from opening. Check the browser console or try the visual preview.', false);
+      }, true);
+      window.addEventListener('unhandledrejection', () => {
+        screen('The portal could not connect', 'A service did not respond while opening the portal. Check your Firebase configuration and network connection.', false);
+      });
+      window.setTimeout(() => {
+        screen('The portal is taking too long to open', 'The sign in service or application scripts did not respond. You can view the example workspace now, or try reloading the page.', false);
+      }, 8500);
+    })();
+  </script>
 </body>
 </html>
