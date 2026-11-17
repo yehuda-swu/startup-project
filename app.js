@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.3.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/13.3.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, query, where, orderBy, serverTimestamp, arrayUnion } from 'https://www.gstatic.com/firebasejs/13.3.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, query, where, orderBy, serverTimestamp, arrayUnion, writeBatch } from 'https://www.gstatic.com/firebasejs/13.3.0/firebase-firestore.js';
 import { firebaseConfig } from './firebaseConfig.js?v=5';
 import { storageConfig } from './storageConfig.js?v=6';
 
@@ -46,7 +46,7 @@ const PROJECT_FIELDS = [
   ['impact','Expected impact','textarea'], ['nextSteps','Next steps','textarea']
 ];
 const DEFAULT_STAGES = Object.fromEntries(STAGES.map(s=>[s.id,'not_started']));
-const state = {user:null,profile:null,view:'dashboard',teams:[],directory:[],requests:[],users:[],team:null,project:null,updates:[],resources:[],uploads:[],feedback:[],tab:'overview',signUp:false,loading:false};
+const state = {user:null,profile:null,view:'dashboard',teams:[],archivedTeams:[],directory:[],requests:[],users:[],team:null,project:null,updates:[],resources:[],uploads:[],feedback:[],tab:'overview',signUp:false,loading:false};
 const configured = Boolean(firebaseConfig.apiKey && !firebaseConfig.apiKey.includes('PASTE_') && !firebaseConfig.projectId.includes('PASTE_'));
 let app, auth, db;
 if(configured){
@@ -145,6 +145,11 @@ async function loadDashboard(){
   else if(profile.role==='supervisor')teamSnaps=(await getDocs(query(collection(db,'teams'),where('supervisorUids','array-contains',uid)))).docs;
   else teamSnaps=(await getDocs(query(collection(db,'teams'),where('memberUids','array-contains',uid)))).docs;
   state.teams=teamSnaps.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.name.localeCompare(b.name));
+  // Removed teams are held in a private archive, not in the active teams collection.
+  let archiveSnaps=[];
+  if(isProgrammeAdmin()) archiveSnaps=(await getDocs(collection(db,'archivedTeams'))).docs;
+  else if(stream) archiveSnaps=(await getDocs(query(collection(db,'archivedTeams'),where('stream','==',stream)))).docs;
+  state.archivedTeams=archiveSnaps.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.team?.name||'').localeCompare(b.team?.name||''));
   await Promise.all(state.teams.map(async team=>{
     const project=await getDoc(doc(db,'projects',team.id));
     if(project.exists()){team.stageStatuses=project.data().stageStatuses||DEFAULT_STAGES;team.dilemma=project.data().dilemma||team.dilemma;}
@@ -177,7 +182,8 @@ function renderDashboard(){
   const admin=isAdministrator();
   const stream=adminStream();
   const roleLabel=admin?roleName(state.profile.role).toUpperCase():state.profile.role==='supervisor'?'SUPERVISOR':'STUDENT';
-  const pending=state.requests.filter(r=>r.status==='pending').length;
+  const activeIds=new Set(state.teams.map(t=>t.id));
+ const pending=state.requests.filter(r=>r.status==='pending'&&activeIds.has(r.teamId)).length;
   let sections=hero(`STARTUP PROJECT PORTAL · ${roleLabel}`,`Welcome back, ${first}.`,state.profile.role==='student'?'Every great idea begins with a real problem. Follow your team’s progress and build your StartUp here.':stream?`Manage your ${streamName(stream)} teams, review their research and help students turn ideas into solutions.`:'Follow your teams, review their research and help them turn ideas into solutions.');
   if(admin)sections+=`<div class="pagehead"><h2>${stream?streamName(stream)+' overview':'Programme overview'}</h2><button class="btn primary" data-action="admin">Manage ${stream?'your cohort':'programme'}</button></div><div class="statrow"><div class="stat"><strong>${state.teams.length}</strong><span>Project teams</span></div>${isProgrammeAdmin()?`<div class="stat"><strong>${state.users.filter(u=>u.role==='student').length}</strong><span>Student accounts</span></div>`:''}<div class="stat"><strong>${pending}</strong><span>Access requests waiting</span></div></div>`;
   sections+=`<div class="pagehead"><h2>${admin?(stream?'Your cohort teams':'All teams'):state.profile.role==='supervisor'?'Your supervised teams':'Your team'}</h2><button class="btn outline small" data-action="reload">Refresh</button></div>`;
@@ -258,7 +264,8 @@ function renderFeedback(){return `<div class="grid2">${supervisorHere()?`<div cl
 function renderAdmin(){
  const main=isProgrammeAdmin();
  const stream=adminStream();
- const pending=state.requests.filter(r=>r.status==='pending'&&(!stream||r.stream===stream));
+ const activeTeamIds=new Set(state.teams.map(t=>t.id));
+ const pending=state.requests.filter(r=>r.status==='pending'&&activeTeamIds.has(r.teamId)&&(!stream||r.stream===stream));
  const supervisors=state.users.filter(u=>['supervisor','admin','waze_admin','netafim_admin'].includes(u.role));
  const scopeOptions=main?`<select name="stream" required><option value="">Select Waze or Netafim</option>${STREAMS.map(s=>`<option value="${s.id}">${h(s.label)}</option>`).join('')}</select>`:`<input type="hidden" name="stream" value="${h(stream)}"><div class="pill good">${h(streamName(stream))}</div>`;
  const supervisorOptions=main?`<div class="field"><label>Supervisor (optional)</label><select name="supervisor"><option value="">Use the cohort administrator</option>${supervisors.map(u=>`<option value="${h(u.id)}">${h(u.name)} (${h(u.email)})</option>`).join('')}</select><p class="hint">If no supervisor is selected, the designated Waze or Netafim administrator can manage the team automatically.</p></div>`:`<p class="note">You will automatically manage this team's research, membership requests and feedback.</p>`;
@@ -267,14 +274,18 @@ function renderAdmin(){
    const cohortDisplay=t.stream?streamName(t.stream):'Not assigned';
    const streamAssignment=main&&!t.stream?`<select data-team-stream="${h(t.id)}" aria-label="Assign cohort to ${h(t.name)}"><option value="">Assign cohort</option>${STREAMS.map(s=>`<option value="${s.id}">${h(s.label)}</option>`).join('')}</select>`:`<span class="pill ${t.stream?'good':'dim'}">${h(cohortDisplay)}</span>`;
    const selectSupervisor=main&&t.stream?`<select data-team-supervisor="${h(t.id)}" aria-label="Assign supervisor to ${h(t.name)}"><option value="">Add supervisor</option>${supervisors.map(u=>`<option value="${h(u.id)}">${h(u.name)}</option>`).join('')}</select>`:'';
-   return `<tr><td><strong>${h(t.name)}</strong><br><span class="subtle">${h(t.cohort||'2026/27')}</span></td><td>${streamAssignment}</td><td><span class="memberlist-small">${(t.memberNames||[]).length?h(t.memberNames.join(', ')):'None yet'}</span></td><td>${(t.memberUids||[]).length}</td><td>${h(names.join(', ')||(t.stream?streamName(t.stream)+' Admin':'Unassigned'))}</td>${main?`<td>${selectSupervisor}</td>`:''}</tr>`;
+   return `<tr><td><strong>${h(t.name)}</strong><br><span class="subtle">${h(t.cohort||'2026/27')}</span></td><td>${streamAssignment}</td><td><span class="memberlist-small">${(t.memberNames||[]).length?h(t.memberNames.join(', ')):'None yet'}</span></td><td>${(t.memberUids||[]).length}</td><td>${h(names.join(', ')||(t.stream?streamName(t.stream)+' Admin':'Unassigned'))}</td>${main?`<td>${selectSupervisor}</td>`:''}<td><button type="button" class="btn danger small" data-action="removeTeam" data-id="${h(t.id)}" aria-label="Remove team ${h(t.name)}">Remove team</button></td></tr>`;
  }).join('');
+ const archivedRows=state.archivedTeams.map(a=>`<tr><td><strong>${h(a.team?.name||'Unnamed team')}</strong><br><span class="subtle">${h(a.team?.cohort||'2026/27')}</span></td><td><span class="pill dim">${h(streamName(a.stream))}</span></td><td>${humanDate(a.archivedAt)}</td><td><button type="button" class="btn secondary small" data-action="restoreTeam" data-id="${h(a.id)}">Restore team</button></td></tr>`).join('');
+ const archiveSection=`<div class="pagehead"><h2>Removed teams</h2><span class="pill dim">${state.archivedTeams.length} archived</span></div><div class="card"><p class="hint">Removed teams no longer appear in the active portal. Students lose access, but their research, presentations and private files remain securely stored until the team is restored.</p>${archivedRows?`<div class="tablewrap"><table class="table"><thead><tr><th>Team</th><th>StartUp group</th><th>Removed</th><th>Action</th></tr></thead><tbody>${archivedRows}</tbody></table></div>`:empty('No removed teams','Any teams removed from your cohort will appear here so you can restore them.')}</div>`;
  const people=main?`<div class="pagehead"><h2>Registered people</h2></div><div class="card tablewrap">${state.users.length?`<table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Change role</th></tr></thead><tbody>${[...state.users].sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(u=>`<tr><td>${h(u.name)}</td><td>${h(u.email)}</td><td><span class="pill dim">${h(roleName(u.role))}</span></td><td>${u.id===state.user.uid?'Your account':`<select data-user-role="${h(u.id)}" aria-label="Change role for ${h(u.name)}">${ROLES.map(role=>`<option value="${h(role)}" ${role===u.role?'selected':''}>${h(roleName(role))}</option>`).join('')}</select>`}</td></tr>`).join('')}</tbody></table>`:empty('No accounts','Accounts will appear here after registration.')}</div><div class="alert warning" style="margin-top:16px">Main administrators manage staff roles across both cohorts. Assign Eden as Waze Admin and Eliana as Netafim Admin. Cohort administrators cannot change account roles or access the other cohort’s private work.</div>`:'';
  return `${hero('PROGRAMME ADMINISTRATION',stream?`Manage ${streamName(stream)}`:'Manage StartUp teams',stream?'Manage your teams, student requests and feedback within your cohort.':'Oversee both cohorts, assign teams to Waze or Netafim and manage staff permissions.')}
  <div class="pagehead"><h2>${stream?streamName(stream)+' management':'Programme management'}</h2><button data-action="reload" class="btn outline small">Refresh data</button></div>
  <div class="admincols"><div class="card"><h3 class="sectiontitle">Create a team</h3><form data-form="newTeam"><div class="field"><label>Team name</label><input name="name" required maxlength="90" placeholder="For example: ${stream==='netafim'?'Netafim':'Waze'} Team 1"></div><div class="field"><label>StartUp group</label>${scopeOptions}</div><div class="field"><label>Programme year</label><input name="cohort" maxlength="35" value="2026/27" required></div><div class="field"><label for="newMemberNames">Team member names (optional)</label><textarea id="newMemberNames" name="memberNames" rows="5" maxlength="1500" placeholder="Enter one student name per line"></textarea><p class="hint">Add the names now or later. This list is private to the team and its authorised staff. Names alone do not create logins.</p></div><div class="field"><label>Subject (optional)</label><select name="category"><option value="">Not selected yet</option>${opts(CATEGORIES,'')}</select></div>${supervisorOptions}<button class="btn primary" type="submit">Create team</button></form></div>
  <div class="card"><div class="sectionhead"><h3 class="sectiontitle">Membership requests</h3><span class="pill">${pending.length} pending</span></div>${pending.length?pending.map(r=>`<div class="item"><h4>${h(r.studentName||r.email||'Student')}</h4><p>${h(r.email||'')}</p><div class="subtle">Requested: ${h(state.directory.find(t=>t.id===r.teamId)?.name||state.teams.find(t=>t.id===r.teamId)?.name||'Unknown team')}</div><div class="row" style="margin-top:11px"><button class="btn primary small" data-action="approve" data-id="${h(r.id)}">Approve</button><button class="btn danger small" data-action="reject" data-id="${h(r.id)}">Decline</button></div></div>`).join(''):empty('No pending requests','Requests to join your teams will appear here.')}</div></div>
- <div class="pagehead"><h2>Team assignments</h2></div><div class="card tablewrap">${state.teams.length?`<table class="table"><thead><tr><th>Team</th><th>StartUp Group</th><th>Team members</th><th>Accounts joined</th><th>Supervisor</th>${main?'<th>Add supervisor</th>':''}</tr></thead><tbody>${teamRows}</tbody></table>`:empty('No teams yet','Create your first team using the form above.')}</div>
+ <div class="pagehead"><h2>Team assignments</h2></div><div class="card tablewrap">${state.teams.length?`<table class="table"><thead><tr><th>Team</th><th>StartUp Group</th><th>Team members</th><th>Accounts joined</th><th>Supervisor</th>${main?'<th>Add supervisor</th>':''}<th>Remove</th></tr></thead><tbody>${teamRows}</tbody></table>`:empty('No teams yet','Create your first team using the form above.')}</div>
+ <p class="hint">Removing a team withdraws access and hides it from all active dashboards. It does not delete the team's research or uploaded documents. Removed teams can be restored below.</p>
+ ${archiveSection}
  ${main&&state.teams.some(t=>!t.stream)?`<div class="alert warning" style="margin-top:15px">Existing teams without a StartUp group must be assigned to Waze or Netafim by the main administrator before cohort administrators can see them. This does not delete existing student work.</div>`:''}
  ${people}`;
 }
@@ -297,6 +308,49 @@ document.addEventListener('click',async event=>{
  if(action==='resetPassword'){
    const email=prompt('Enter the email address for your account:');if(!email)return;
    await withBusy(async()=>{await sendPasswordResetEmail(auth,email.trim());toast('If the email is registered, a password reset message will be sent.');});return;
+ }
+ if(action==='removeTeam'){
+   if(!isAdministrator())return;
+   const team=state.teams.find(t=>t.id===id);
+   if(!team||(adminStream()&&team.stream!==adminStream()))return toast('You cannot manage this team.',true);
+   const typed=prompt(`Remove ${team.name} from the StartUp Portal?\n\nStudents will lose access. Research and files will be safely retained and the team can be restored.\n\nTo confirm, type the full team name:`);
+   if(typed===null)return;
+   if(typed.trim()!==team.name)return toast('Team name did not match. Nothing was removed.',true);
+   await withBusy(async()=>{
+     const [directorySnap,teamSnap]=await Promise.all([getDoc(doc(db,'teamDirectory',id)),getDoc(doc(db,'teams',id))]);
+     if(!teamSnap.exists())throw new Error('This team no longer exists. Refresh the dashboard.');
+     if(!directorySnap.exists())throw new Error('The team directory record is missing. Please contact the Main Admin before removing this team.');
+     const batch=writeBatch(db);
+     batch.set(doc(db,'archivedTeams',id),{
+       team:teamSnap.data(),
+       directory:directorySnap.data(),
+       stream:team.stream||'',
+       archivedBy:state.user.uid,
+       archivedAt:serverTimestamp()
+     });
+     batch.delete(doc(db,'teamDirectory',id));
+     batch.delete(doc(db,'teams',id));
+     await batch.commit();
+     state.team=null;
+     await loadDashboard();
+     toast(`${team.name} removed from active teams. It can be restored below.`);
+   });return;
+ }
+ if(action==='restoreTeam'){
+   if(!isAdministrator())return;
+   const archived=state.archivedTeams.find(a=>a.id===id);
+   if(!archived||(adminStream()&&archived.stream!==adminStream()))return toast('You cannot restore this team.',true);
+   const name=archived.team?.name||'This team';
+   if(!confirm(`Restore ${name}? Its members will regain access to their existing project, research and files.`))return;
+   await withBusy(async()=>{
+     const batch=writeBatch(db);
+     batch.set(doc(db,'teams',id),archived.team);
+     batch.set(doc(db,'teamDirectory',id),archived.directory);
+     batch.delete(doc(db,'archivedTeams',id));
+     await batch.commit();
+     await loadDashboard();
+     toast(`${name} restored to active teams.`);
+   });return;
  }
  if(action==='approve'||action==='reject'){
    const request=state.requests.find(r=>r.id===id);if(!request||(!isProgrammeAdmin()&&request.stream!==adminStream()))return;
