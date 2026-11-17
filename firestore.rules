@@ -1,0 +1,104 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+    function userExists() { return signedIn() && exists(/databases/$(database)/documents/users/$(me())); }
+    function admin() { return userExists() && get(/databases/$(database)/documents/users/$(me())).data.role == 'admin'; }
+    function teamData(teamId) { return get(/databases/$(database)/documents/teams/$(teamId)).data; }
+    function isTeamMember(teamId) {
+      return signedIn() && (
+        admin() || me() in teamData(teamId).memberUids ||
+        me() in teamData(teamId).supervisorUids
+      );
+    }
+    function isTeamSupervisor(teamId) {
+      return signedIn() && (admin() || me() in teamData(teamId).supervisorUids);
+    }
+
+    match /users/{uid} {
+      allow create: if signedIn() && me() == uid &&
+        request.resource.data.keys().hasOnly(['name','email','role','createdAt']) &&
+        request.resource.data.role == 'student' &&
+        request.resource.data.email == request.auth.token.email &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() <= 70;
+      allow get: if signedIn() && (me() == uid || admin());
+      allow list: if admin();
+      allow update: if admin() || (
+        signedIn() && me() == uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']) &&
+        request.resource.data.name is string && request.resource.data.name.size() <= 70
+      );
+      allow delete: if false;
+    }
+
+    match /teamDirectory/{teamId} {
+      allow read: if signedIn() && userExists();
+      allow write: if admin();
+    }
+
+    match /teams/{teamId} {
+      allow get, list: if signedIn() && (
+        admin() || me() in resource.data.memberUids || me() in resource.data.supervisorUids
+      );
+      allow create, update, delete: if admin();
+
+      match /updates/{updateId} {
+        allow read: if isTeamMember(teamId);
+        allow create: if isTeamMember(teamId) &&
+          request.resource.data.authorUid == me() &&
+          request.resource.data.keys().hasOnly(['type','title','body','authorUid','authorName','createdAt']);
+        allow delete: if isTeamSupervisor(teamId) || (isTeamMember(teamId) && resource.data.authorUid == me());
+        allow update: if false;
+      }
+      match /resources/{sourceId} {
+        allow read: if isTeamMember(teamId);
+        allow create: if isTeamMember(teamId) &&
+          request.resource.data.authorUid == me() &&
+          request.resource.data.keys().hasOnly(['title','url','notes','authorUid','authorName','createdAt']);
+        allow delete: if isTeamSupervisor(teamId) || (isTeamMember(teamId) && resource.data.authorUid == me());
+        allow update: if false;
+      }
+      match /uploads/{uploadId} {
+        allow read: if isTeamMember(teamId);
+        allow create: if isTeamMember(teamId) &&
+          request.resource.data.authorUid == me() &&
+          request.resource.data.keys().hasOnly(['kind','description','url','fileName','storagePath','size','authorUid','authorName','createdAt']);
+        allow update, delete: if false;
+      }
+      match /feedback/{feedbackId} {
+        allow read: if isTeamMember(teamId);
+        allow create: if isTeamSupervisor(teamId) &&
+          request.resource.data.authorUid == me() &&
+          request.resource.data.keys().hasOnly(['title','body','authorUid','authorName','createdAt']);
+        allow update, delete: if false;
+      }
+    }
+
+    match /projects/{teamId} {
+      allow read: if isTeamMember(teamId);
+      allow create, update: if isTeamMember(teamId) &&
+        request.resource.data.keys().hasOnly([
+          'name','category','dilemma','summary','existing','gap','solution',
+          'audience','operation','partners','impact','nextSteps',
+          'stageStatuses','updatedBy','updatedAt'
+        ]) && request.resource.data.updatedBy == me();
+      allow delete: if admin();
+    }
+
+    match /requests/{requestId} {
+      allow create: if signedIn() && userExists() &&
+        request.resource.data.uid == me() &&
+        requestId == me() + '_' + request.resource.data.teamId &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.keys().hasOnly(['uid','teamId','status','studentName','email','createdAt']) &&
+        request.resource.data.email == request.auth.token.email;
+      allow get, list: if admin() || (signedIn() && resource.data.uid == me());
+      allow update: if admin();
+      allow delete: if false;
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}
