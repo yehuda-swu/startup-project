@@ -2,9 +2,25 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.3.0/firebas
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/13.3.0/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, query, where, orderBy, serverTimestamp, arrayUnion } from 'https://www.gstatic.com/firebasejs/13.3.0/firebase-firestore.js';
 import { firebaseConfig } from './firebaseConfig.js?v=5';
+import { storageConfig } from './storageConfig.js?v=6';
 
 const el = document.getElementById('app');
 const toastEl = document.getElementById('toast');
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
+const ALLOWED_FILE_EXTENSIONS = ['pdf','doc','docx','ppt','pptx','xls','xlsx','txt','csv','png','jpg','jpeg','webp'];
+const uploadsReady = Boolean(storageConfig.supabaseUrl?.startsWith('https://') && storageConfig.publishableKey && !storageConfig.publishableKey.startsWith('PASTE_'));
+let supabaseFiles = null;
+async function getFileStorageClient(){
+  if(!uploadsReady) throw new Error('Direct uploads are not connected yet.');
+  // Load file storage only on demand. A blocked CDN must never prevent portal sign in.
+  if(!supabaseFiles){
+    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+    supabaseFiles = createClient(storageConfig.supabaseUrl,storageConfig.publishableKey,{
+      auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}
+    });
+  }
+  return supabaseFiles;
+}
 const STREAMS = [{id:'waze',label:'StartUp Waze'},{id:'netafim',label:'StartUp Netafim'}];
 const ROLES = ['student','supervisor','waze_admin','netafim_admin','admin'];
 function isProgrammeAdmin(){return state.profile?.role==='admin';}
@@ -201,7 +217,7 @@ function renderTeam(){
   const stageStatuses=p.stageStatuses||DEFAULT_STAGES;
   const completed=STAGES.filter(s=>stageStatuses[s.id]==='complete').length;
   const percent=Math.round(completed/STAGES.length*100);
-  const tabs=[['overview','Overview'],['stages','Project stages'],['research',`Research (${state.resources.length})`],['journal',`Progress journal (${state.updates.length})`],['uploads',`Presentations (${state.uploads.length})`],['feedback',`Feedback (${state.feedback.length})`]];
+  const tabs=[['overview','Overview'],['stages','Project stages'],['research',`Research (${state.resources.length})`],['journal',`Progress journal (${state.updates.length})`],['uploads',`Files (${state.uploads.length})`],['feedback',`Feedback (${state.feedback.length})`]];
   return `<div style="margin-bottom:15px"><button class="btn outline small" data-action="home">← All teams</button></div><section class="card"><div class="teamheader"><div><span class="pill">${h(t.category||'StartUp')}</span> <span class="pill dim">${h(t.cohort||'2026/27')}</span><h2>${h(t.name)}</h2><p class="muted" style="margin:0">${h(p.dilemma||'Your dilemma statement will appear here.')}</p><div class="roster-header"><span class="subtle">Team members</span>${memberNamesHTML(t.memberNames)}</div></div><button class="btn outline small" data-action="refreshTeam">Refresh team</button></div><div class="row between" style="margin-top:22px"><span class="subtle">Stage completion</span><b style="font-size:13px">${percent}% complete</b></div><div class="progressline"><span style="width:${percent}%"></span></div></section><nav class="tabs" aria-label="Team workspace sections">${tabs.map(([id,label])=>`<button class="tab ${state.tab===id?'active':''}" data-action="tab" data-id="${id}">${h(label)}</button>`).join('')}</nav>${({overview:renderOverview,stages:renderStages,research:renderResearch,journal:renderJournal,uploads:renderUploads,feedback:renderFeedback}[state.tab]||renderOverview)()}`;
 }
 function renderOverview(){const p=state.project||{};return `<div class="grid2"><div class="card"><div class="sectionhead"><h3 class="sectiontitle">Project planning</h3><span class="pill">Shared document</span></div><p class="hint">Everyone in your team can update these fields. Please save your changes before switching sections.</p><form data-form="project">${PROJECT_FIELDS.map(([key,label,kind])=>`<div class="field"><label for="p_${key}">${h(label)}</label>${kind==='textarea'?`<textarea id="p_${key}" name="${key}" maxlength="3500" placeholder="Add your team's thoughts here…">${h(p[key]||'')}</textarea>`:kind==='select'?`<select id="p_${key}" name="${key}"><option value="">Choose a subject</option>${opts(CATEGORIES,p[key]||'')}</select>`:`<input id="p_${key}" name="${key}" maxlength="140" value="${h(p[key]||'')}" placeholder="Enter your StartUp name">`}</div>`).join('')}<button class="btn primary" type="submit">Save project plan</button></form></div><aside class="stack"><div class="card"><div class="sectionhead"><h3 class="sectiontitle">Team members</h3><span class="pill">${(state.team.memberNames||[]).length} listed</span></div>${memberNamesHTML(state.team.memberNames)}${isAdministrator()?`<form data-form="editMembers" style="margin-top:18px"><div class="field"><label for="editMemberNames">Edit team member names</label><textarea id="editMemberNames" name="memberNames" rows="4" maxlength="1500" placeholder="One student per line">${h((state.team.memberNames||[]).join('\n'))}</textarea></div><p class="hint">Names are for the team register only. Students still need approved accounts to sign in.</p><button class="btn secondary" type="submit">Save team members</button></form>`:''}</div><div class="card"><h3 class="sectiontitle">Your project journey</h3><p class="muted" style="font-size:13px;line-height:1.6">Start with an actual dilemma involving Israel. Understand it, research existing responses, identify the gap and create a new solution.</p>${STAGES.map((s,i)=>`<div class="row" style="padding:8px 0;border-top:1px solid #eff3f7"><div class="introicon" style="width:29px;height:29px;font-size:12px">${i+1}</div><div style="flex:1"><strong style="font-size:13px">${h(s.name)}</strong></div><span class="pill ${p.stageStatuses?.[s.id]==='complete'?'good':'dim'}">${p.stageStatuses?.[s.id]==='complete'?'Done':'Open'}</span></div>`).join('')}</div><div class="card"><h3 class="sectiontitle">Recent activity</h3>${state.updates.length?state.updates.slice(0,3).map(x=>`<div class="item"><strong style="font-size:13px">${h(x.title)}</strong><div class="meta">${h(x.authorName)} · ${humanDate(x.createdAt)}</div></div>`).join(''):empty('Nothing recorded yet','Add your first progress update to start the team journal.')}</div></aside></div>`;}
@@ -209,7 +225,34 @@ function renderStages(){const statuses=state.project?.stageStatuses||DEFAULT_STA
 function itemActions(type,item){return (item.authorUid===state.user.uid||supervisorHere())?`<button class="btn small danger" data-action="deleteItem" data-type="${type}" data-id="${h(item.id)}">Remove</button>`:'';}
 function renderResearch(){return `<div class="grid2"><div class="card"><h3 class="sectiontitle">Add a research source</h3><p class="hint">Record articles, reports, organisations and useful websites. Cite your source so your supervisor can review it.</p><form data-form="resource"><div class="field"><label>Source title</label><input name="title" maxlength="140" required placeholder="For example: Research report on regional water access"></div><div class="field"><label>Website or document link</label><input name="url" type="url" required placeholder="https://example.org/report"></div><div class="field"><label>Key findings and relevance</label><textarea name="notes" maxlength="2200" required placeholder="What did you learn and why is it important to your dilemma?"></textarea></div><button class="btn primary" type="submit">Add source</button></form></div><div class="card"><div class="sectionhead"><h3 class="sectiontitle">Shared research library</h3><span class="pill">${state.resources.length} sources</span></div>${state.resources.length?state.resources.map(x=>`<article class="item"><div class="row between"><h4>${h(x.title)}</h4>${itemActions('resources',x)}</div><div class="meta">Added by ${h(x.authorName)} · ${humanDate(x.createdAt)}</div><p>${h(x.notes)}</p><a class="linkline" href="${h(safeLink(x.url))}" target="_blank" rel="noopener noreferrer">View source</a></article>`).join(''):empty('No sources added yet','Add the first source your team has researched.')}</div></div>`;}
 function renderJournal(){return `<div class="grid2"><div class="card"><h3 class="sectiontitle">Record a progress update</h3><p class="hint">Use the journal to share what has been completed, ask questions and record what needs to happen next.</p><form data-form="update"><div class="field"><label>Update type</label><select name="type">${opts(['Progress update','Milestone','Question for supervisor'],'Progress update')}</select></div><div class="field"><label>Title</label><input name="title" maxlength="140" required placeholder="For example: We identified our research gap"></div><div class="field"><label>Details</label><textarea name="body" maxlength="3500" required placeholder="What has your team achieved or what help do you need?"></textarea></div><button type="submit" class="btn primary">Post update</button></form></div><div class="card"><div class="sectionhead"><h3 class="sectiontitle">Team journal</h3><span class="pill">${state.updates.length} updates</span></div>${state.updates.length?state.updates.map(x=>`<article class="item"><div class="row between"><span class="pill dim">${h(x.type)}</span>${itemActions('updates',x)}</div><h4 style="margin-top:11px">${h(x.title)}</h4><div class="meta">${h(x.authorName)} · ${humanDate(x.createdAt)}</div><p>${h(x.body)}</p></article>`).join(''):empty('No updates yet','Share your first research or project milestone.')}</div></div>`;}
-function renderUploads(){return `<div class="grid2"><div class="card"><h3 class="sectiontitle">Share your presentations and documents</h3><p class="muted" style="font-size:13px">Save your PowerPoint, PDF or research document in your school approved Google Drive or OneDrive account, then share its link here. The StartUp portal itself does not store files.</p><div class="note">IMPORTANT: Give access to your team and assigned supervisors only. Avoid public sharing or links that allow anyone to view pupils' work.</div><form data-form="fileLink" style="margin-top:22px"><div class="field"><label>Document or presentation name</label><input name="description" required maxlength="140" placeholder="For example: February first draft"></div><div class="field"><label>Secure document link</label><input name="url" type="url" required placeholder="https://docs.google.com/presentation/..."></div><button class="btn primary" type="submit">Share document link</button></form></div><div class="card"><div class="sectionhead"><h3 class="sectiontitle">Shared presentations and documents</h3><span class="pill">${state.uploads.length} links</span></div>${state.uploads.length?state.uploads.map(x=>`<article class="item fileitem"><div class="row" style="min-width:0"><div class="filetype">${x.kind==='link'?'LINK':'FILE'}</div><div style="min-width:0"><h4>${h(x.description)}</h4><div class="meta">${h(x.authorName)} · ${humanDate(x.createdAt)}</div><div class="subtle" style="overflow-wrap:anywhere">${x.kind==='link'?'External document':'Previous file upload'}</div></div></div><div class="row">${x.kind==='link'?`<a href="${h(safeLink(x.url))}" target="_blank" rel="noopener noreferrer" class="btn outline small">Open</a>`:`<span class="subtle">Share again as a link</span>`}${itemActions('uploads',x)}</div></article>`).join(''):empty('No documents shared yet','Add a secure link to your first draft or other project work.')}</div></div>`;}
+
+function renderUploads(){
+  const ready=uploadsReady;
+  const uploadForm=ready?`<form data-form="fileUpload" class="uploadform" style="margin-top:18px">
+    <div class="field"><label for="fileDescription">Document title</label><input id="fileDescription" name="description" maxlength="140" required placeholder="For example: February first draft"></div>
+    <div class="field"><label for="projectFile">Choose a file</label><input id="projectFile" name="projectFile" type="file" required accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.png,.jpg,.jpeg,.webp"></div>
+    <p class="hint">Word, PowerPoint, PDF, spreadsheets, text and images. Maximum 20 MB per file.</p>
+    <button class="btn primary" type="submit">Upload file securely</button>
+    <div id="uploadProgress" class="upload-progress" aria-live="polite"></div>
+  </form>`:`<div class="alert warning" style="margin-top:14px"><strong>Direct uploads are not connected yet.</strong> The programme administrator must complete the free Supabase setup in the included README and enter the two public settings in <code>storageConfig.js</code>. Document links still work below.</div>`;
+  const largeFiles = `<div class="largefile-note" id="largeFileNotice" role="note"><strong>For files larger than 20MB please use <a href="https://wetransfer.com/" target="_blank" rel="noopener noreferrer">WeTransfer</a>.</strong><p>Upload the file on WeTransfer, then paste its transfer link into the document link form below. Transfer links may expire. WeTransfer requires users to be at least 16. If you are under 16, please ask your StartUp supervisor to handle the transfer. Only share pupils' work with authorised recipients.</p></div>`;
+  return `<div class="grid2"><div class="stack"><div class="card"><div class="sectionhead"><h3 class="sectiontitle">Upload project files</h3><span class="pill good">Private team library</span></div><p class="muted" style="font-size:13px;line-height:1.5">Upload first drafts, presentations, research and supporting documents directly to your team workspace. Only approved team members and authorised staff can request a download.</p>${uploadForm}${largeFiles}</div>
+  <div class="card"><h3 class="sectiontitle">Share an existing document link</h3><p class="hint">You can still share a school approved Google Drive or OneDrive document. Grant access to your team and authorised educators only.</p><form data-form="fileLink"><div class="field"><label>Document or presentation title</label><input name="description" maxlength="140" required placeholder="For example: Collaborative research document"></div><div class="field"><label>Secure document link</label><input name="url" type="url" required placeholder="https://docs.google.com/presentation/..."></div><button class="btn secondary" type="submit">Share document link</button></form></div></div>
+  <div class="card"><div class="sectionhead"><h3 class="sectiontitle">Team files and presentations</h3><span class="pill">${state.uploads.length} items</span></div><p class="hint">Files are stored privately. Download links are created only when an approved team member opens a file, and they expire shortly afterwards.</p>${state.uploads.length?state.uploads.map(x=>`<article class="item fileitem"><div class="row" style="min-width:0"><div class="filetype">${x.kind==='stored'?'FILE':x.kind==='link'?'LINK':'FILE'}</div><div style="min-width:0"><h4>${h(x.description)}</h4><div class="meta">${h(x.authorName)} · ${humanDate(x.createdAt)}</div><div class="subtle file-description">${x.kind==='stored'?`${h(x.fileName||'Document')} · ${h(formatFileSize(x.sizeBytes||0))}`:x.kind==='link'?'External document link':'Earlier file entry'}</div></div></div><div class="row">${x.kind==='stored'?`<button class="btn outline small" data-action="openStoredFile" data-id="${h(x.id)}">Download</button>`:x.kind==='link'?`<a href="${h(safeLink(x.url))}" target="_blank" rel="noopener noreferrer" class="btn outline small">Open</a>`:`<span class="subtle">Please share this file again as a link</span>`}${itemActions('uploads',x)}</div></article>`).join(''):empty('No documents yet','Upload a file or share a secure document link.')}</div></div>`;
+}
+function formatFileSize(bytes){return bytes>=1048576?`${(bytes/1048576).toFixed(1)} MB`:`${Math.max(1,Math.round(bytes/1024))} KB`;}
+async function fileFunction(action,details){
+  if(!uploadsReady) throw new Error('Direct upload storage has not been configured. You may still share a document link.');
+  const token=await state.user.getIdToken();
+  const response=await fetch(`${storageConfig.supabaseUrl.replace(/\/$/,'')}/functions/v1/${storageConfig.functionName||'startup-files'}`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'apikey':storageConfig.publishableKey},
+    body:JSON.stringify({action,...details})
+  });
+  let data={};try{data=await response.json();}catch{}
+  if(!response.ok)throw new Error(data.error||`File service error (${response.status}).`);
+  return data;
+}
 function renderFeedback(){return `<div class="grid2">${supervisorHere()?`<div class="card"><h3 class="sectiontitle">Leave supervisor feedback</h3><p class="hint">Explain what the team has done well and what should be improved before the next stage.</p><form data-form="feedback"><div class="field"><label>Feedback heading</label><input name="title" maxlength="140" required placeholder="For example: First draft review"></div><div class="field"><label>Feedback and next steps</label><textarea name="body" maxlength="3500" required placeholder="What is strong? What should be changed? What needs to happen next?"></textarea></div><button class="btn primary" type="submit">Share feedback</button></form></div>`:`<div class="card"><h3 class="sectiontitle">Supervisor feedback</h3><p class="muted">Your supervisors can leave feedback here. Use the Progress journal to ask questions or flag anything you need help with.</p><div class="note">Supervisors can see all research, project updates and document links shared by your team.</div></div>`}<div class="card"><div class="sectionhead"><h3 class="sectiontitle">Feedback history</h3><span class="pill">${state.feedback.length} comments</span></div>${state.feedback.length?state.feedback.map(x=>`<article class="item"><h4>${h(x.title)}</h4><div class="meta">${h(x.authorName)} · ${humanDate(x.createdAt)}</div><p>${h(x.body)}</p></article>`).join(''):empty('No feedback yet','Supervisor comments will be shown here.')}</div></div>`;}
 
 function renderAdmin(){
@@ -265,15 +308,54 @@ document.addEventListener('click',async event=>{
      await loadDashboard();toast(action==='approve'?'Access approved.':'Request declined.');
    });return;
  }
+ if(action==='openStoredFile'){
+   const current=state.uploads.find(f=>f.id===id);
+   if(!current||current.kind!=='stored')return;
+   // Open a blank tab immediately so popup blockers do not prevent a download.
+   const tab=window.open('about:blank','_blank');
+   if(tab){tab.document.title='Preparing your file';tab.document.body.textContent='Preparing your secure download…';}
+   await withBusy(async()=>{
+     try{
+       const {url}=await fileFunction('download',{teamId:state.team.id,documentId:id});
+       const fileURL=new URL(url);
+       const expectedHost=new URL(storageConfig.supabaseUrl).hostname;
+       if(fileURL.protocol!=='https:' || ![expectedHost,expectedHost.replace('.supabase.co','.storage.supabase.co')].includes(fileURL.hostname))
+         throw new Error('The storage service returned an unexpected download address.');
+       if(tab){tab.location.href=url;}else{const link=document.createElement('a');link.href=url;link.target='_blank';link.rel='noopener noreferrer';link.click();}
+     }catch(err){if(tab)tab.close();throw err;}
+   });return;
+ }
  if(action==='deleteItem'){
    if(!['updates','resources','uploads'].includes(b.dataset.type))return;
    if(!confirm('Remove this item from the team workspace?'))return;
-   await withBusy(async()=>{await deleteDoc(doc(db,'teams',state.team.id,b.dataset.type,id));await loadTeam();toast('Item removed.');});return;
+   await withBusy(async()=>{
+     const selected=b.dataset.type==='uploads'?state.uploads.find(f=>f.id===id):null;
+     if(selected?.kind==='stored'){
+       if(!uploadsReady)throw new Error('File storage must be configured to remove uploaded files safely.');
+       await fileFunction('delete',{teamId:state.team.id,documentId:id});
+     }else await deleteDoc(doc(db,'teams',state.team.id,b.dataset.type,id));
+     await loadTeam();toast('Item removed.');
+   });return;
  }
 });
 
 document.addEventListener('change',async event=>{
  const node=event.target;
+ if(node.matches('input[name="projectFile"]')){
+   const file=node.files?.[0];
+   const area=document.getElementById('uploadProgress');
+   if(area){
+     if(file && file.size>MAX_FILE_BYTES){
+       area.innerHTML='';
+       area.textContent='This file is over 20 MB. Please use WeTransfer and share its link below.';
+       area.classList.add('upload-warning');
+     }else{
+       area.textContent=file ? `${file.name} (${formatFileSize(file.size)}) is ready to upload.` : '';
+       area.classList.remove('upload-warning');
+     }
+   }
+   return;
+ }
  if(node.matches('select[data-stage]')){
    const stage=node.dataset.stage,value=node.value;
    await withBusy(async()=>{
@@ -390,6 +472,38 @@ document.addEventListener('submit',async event=>{
  }
  if(type==='feedback'){
    await withBusy(async()=>{await createPost('feedback',{title:formValue(form,'title'),body:formValue(form,'body')});toast('Feedback shared with the team.');});return;
+ }
+ if(type==='fileUpload'){
+   const file=form.querySelector('input[name="projectFile"]')?.files?.[0];
+   if(!file)return toast('Choose a file first.',true);
+   const ext=file.name.toLowerCase().split('.').pop();
+   if(!ALLOWED_FILE_EXTENSIONS.includes(ext))return toast('Choose a PDF, Office document, text file or image.',true);
+   if(file.size>MAX_FILE_BYTES){document.getElementById('largeFileNotice')?.scrollIntoView({behavior:'smooth',block:'center'});return toast('For files larger than 20MB please use WeTransfer. Share its link below.',true);}
+   if(file.size<1)return toast('The file is empty. Please select another file.',true);
+   if(!uploadsReady)return toast('The administrator has not connected private file storage yet.',true);
+   const description=formValue(form,'description');
+   if(!description||description.length>140)return toast('Add a document title.',true);
+   await withBusy(async()=>{
+     const progress=document.getElementById('uploadProgress');
+     if(progress)progress.textContent='Checking team access…';
+     const {path,token}=await fileFunction('prepare-upload',{
+       teamId:state.team.id,fileName:file.name,fileSize:file.size,mimeType:file.type||'application/octet-stream'
+     });
+     if(progress)progress.textContent='Uploading '+file.name+'…';
+     const fileStorage=await getFileStorageClient();
+     const {error}=await fileStorage.storage.from(storageConfig.bucket||'startup-team-files')
+       .uploadToSignedUrl(path,token,file,{contentType:file.type||'application/octet-stream',upsert:false});
+     if(error)throw error;
+     if(progress)progress.textContent='Saving the file to your team library…';
+     try{
+       await createPost('uploads',{kind:'stored',description,fileName:file.name,sizeBytes:file.size,
+         mimeType:file.type||'application/octet-stream',storagePath:path,url:''});
+       toast('File uploaded to your team library.');
+     }catch(error){
+       try{await fileFunction('abort-upload',{teamId:state.team.id,path});}catch(err){console.warn('Could not remove incomplete upload',err);}
+       throw error;
+     }
+   });return;
  }
  if(type==='fileLink'){
    const url=formValue(form,'url');if(safeLink(url)==='#'||!url.startsWith('https://'))return toast('Enter a secure HTTPS document link.',true);

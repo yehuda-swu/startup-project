@@ -130,16 +130,34 @@ service cloud.firestore {
         allow read: if isTeamMember(teamId);
         allow create: if isTeamMember(teamId) &&
           request.resource.data.authorUid == me() &&
-          request.resource.data.keys().hasOnly([
-            'kind','description','url','fileName','authorUid','authorName','createdAt'
-          ]) &&
-          request.resource.data.kind == 'link' &&
           request.resource.data.description is string &&
           request.resource.data.description.size() > 0 &&
           request.resource.data.description.size() <= 140 &&
-          request.resource.data.url is string &&
-          request.resource.data.url.matches('https://.*') &&
-          request.resource.data.url.size() <= 2048;
+          (
+            (request.resource.data.kind == 'link' &&
+              request.resource.data.keys().hasOnly([
+                'kind','description','url','fileName','authorUid','authorName','createdAt'
+              ]) &&
+              request.resource.data.url is string &&
+              request.resource.data.url.matches('https://.*') &&
+              request.resource.data.url.size() <= 2048) ||
+            (request.resource.data.kind == 'stored' &&
+              request.resource.data.keys().hasOnly([
+                'kind','description','url','fileName','mimeType','sizeBytes','storagePath',
+                'authorUid','authorName','createdAt'
+              ]) &&
+              request.resource.data.url == '' &&
+              request.resource.data.fileName is string &&
+              request.resource.data.fileName.size() > 0 &&
+              request.resource.data.fileName.size() <= 200 &&
+              request.resource.data.mimeType is string &&
+              request.resource.data.mimeType.size() <= 120 &&
+              request.resource.data.sizeBytes is int &&
+              request.resource.data.sizeBytes > 0 &&
+              request.resource.data.sizeBytes <= 20971520 &&
+              request.resource.data.storagePath is string &&
+              request.resource.data.storagePath.matches('^' + teamId + '/' + me() + '/[a-f0-9-]{36}\\.[a-z0-9]{1,10}$'))
+          );
         allow update: if false;
         allow delete: if isTeamSupervisor(teamId) ||
           (isTeamMember(teamId) && resource.data.authorUid == me());

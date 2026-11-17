@@ -12,3 +12,10 @@
 .roster-header{margin-top:15px}
 .roster-header .membernames{margin-top:6px}
 .memberlist-small{font-size:12px;color:#456b82;line-height:1.5;min-width:120px;display:block;max-width:270px}
+
+/* Private document library */
+.uploadform input[type="file"]{padding:12px;background:#f8fbff;border:1px dashed #a5c9de;min-height:52px}.upload-progress{font-size:12px;color:#0a4f7a;font-weight:700;margin-top:12px;min-height:18px}.file-description{overflow-wrap:anywhere;max-width:260px}.fileitem{align-items:flex-start;flex-wrap:wrap}.fileitem>.row:first-child{flex:1 1 210px}.fileitem>.row:last-child{margin-left:auto}.filetype{flex-shrink:0}
+
+/* Large file guidance */
+.largefile-note{margin-top:16px;padding:15px 17px;border:1px solid #b6d7e9;border-left:4px solid #b8d80e;border-radius:10px;background:#f2f9fc;color:#16364b;font-size:13px;line-height:1.55}
+.largefile-note strong{font-size:14px}.largefile-note a{color:#00669c;text-decoration:underline;text-underline-offset:2px}.largefile-note p{margin:7px 0 0;color:#496579;font-size:12px}.upload-warning{color:#943d1d!important}
