@@ -1,126 +1,71 @@
-# StartUp Project Portal | Free Spark Edition
+# StartUp Project Portal | Waze and Netafim administrators
 
-This edition uses **Firebase Authentication**, **Cloud Firestore** and **GitHub Pages** only. It does **not** need Firebase Cloud Storage or the Blaze billing plan. Students share controlled links to presentations stored outside Firebase.
+This update retains the existing Firebase project, student accounts, team work, GitHub Pages website and free Spark plan. It adds separate cohort administrator roles and the Firestore permissions that enforce them.
 
-## What the portal does
+## Roles
 
-- Private student team workspaces and progress across six project stages
-- Research notes and source links
-- Project plans and progress journals
-- Secure external document and presentation links
-- Assigned supervisor feedback
-- Administrator team creation, account roles and membership approvals
+| Account role | Assigned to | Permissions |
+| --- | --- | --- |
+| `admin` | Main administrator | Manage both cohorts, all teams, approvals and account roles |
+| `waze_admin` | Eden, edeni@standwithus.com | Create Waze teams, review Waze research and presentations, approve Waze student requests, give feedback |
+| `netafim_admin` | Eliana, egarfunkel@standwithus.com | Same functions for Netafim only |
+| `student` | Students | Access their approved teams only |
+| `supervisor` | Other educators if needed | Access assigned teams |
 
-## What it does not do
+Only the main administrator can change other users' roles. Cohort administrator access restrictions are enforced by Firestore rules, not only by hiding information in the website.
 
-- No direct uploads of PDFs, PowerPoint files or images to Firebase
-- No documents stored in Firestore
-- Google Drive, OneDrive and Canva sharing permissions must be configured **separately**. Firestore permissions do not protect external links.
+## Install the new version
 
-## Firebase setup | Free Spark plan
+1. Download and extract the new ZIP.
+2. Open the **existing GitHub repository** for your StartUp Portal.
+3. Select **Add file → Upload files** and upload all of the **individual files** inside the extracted folder to the repository root. Replace the old versions. Do not upload the enclosing folder or the ZIP itself.
+4. Commit with the message: `Add Waze and Netafim cohort administrator roles`.
+5. In Firebase, open **Firestore Database → Rules** for the existing `startup-project-portal` project.
+6. Open the **new** `firestore.rules` file with Notepad. Copy all its contents into the Firebase rules editor and click **Publish**. Uploading the rules file to GitHub does not activate the rules.
+7. Open the live website and press **Ctrl + Shift + R** to refresh.
 
-1. Open https://console.firebase.google.com/ and create a **new project** for StartUp. Keep the **Spark** plan and do not link a billing account.
-2. On Project Overview, click the **Web app** icon `</>` to register a web app. Firebase Hosting is not required. Copy the web app configuration.
-3. `firebaseConfig.js` is already populated with the StartUp Firebase web settings shared by the organiser. Do not replace it with the Firebase example containing `import` or `initializeApp`. Firebase web configuration is public. NEVER upload an admin service account JSON or private key.
-4. Go to **Authentication > Sign in method** and enable **Email/Password**.
-5. Go to **Firestore Database > Create database**. Choose **Standard edition**, an appropriate UK or European region where supported, and **production mode**.
-6. Go to **Firestore Database > Rules**, replace the initial rules with the contents of `firestore.rules`, then press **Publish**. Uploading the rules file to GitHub alone does not deploy these rules.
-7. Do **not** turn on Cloud Storage. Do **not** upgrade to Blaze. There is no `storage.rules` file in this edition.
-8. Go to **Authentication > Settings > Authorised domains** and add the GitHub Pages hostname, for example `yehuda-swu.github.io` (hostname only, no `https://` and no repository path).
+**Important:** The existing `firebaseConfig.js` already contains the same Firebase web configuration. Do not edit it. You do not need Firebase Cloud Storage or the Blaze billing plan. No database reset is needed.
 
-## GitHub Pages setup
+## Assign the staff accounts
 
-1. Create a new GitHub repository, for example `startup-project-portal`.
-2. Upload the **contents** of this ZIP to the root of the repository. `index.html` must be at the root.
-3. Open **Settings > Pages > Deploy from a branch**, then choose `main`, `/ (root)`, and **Save**.
-4. Open the URL supplied by GitHub Pages. Use the live HTTPS site, not `index.html` opened from a downloaded ZIP.
-5. `preview.html` is a standalone design preview and does not access Firebase.
+1. Eden and Eliana register using their own staff email addresses if they have not done so already. Verify their identities before granting administrator permissions.
+2. Sign into the website as the existing main administrator and select **Main Admin**.
+3. In **Registered people**, change Eden's role to **Waze Admin**.
+4. Change Eliana's role to **Netafim Admin**.
+5. Ask both staff members to sign out and sign in again.
 
-Suggested GitHub commit message:
+The new Firestore rules reserve Waze Admin for `edeni@standwithus.com` and Netafim Admin for `egarfunkel@standwithus.com`. The regular `admin` role has unrestricted programme access and should remain with the main administrator.
 
-    Use free Firebase Spark plan for StartUp project portal
+## Assign existing teams to a cohort
 
-Optional local Git commands:
+Older team records may lack a `stream` field. In **Main Admin → Team assignments**, teams marked **Not assigned** have an **Assign cohort** selection. Choose either **StartUp Waze** or **StartUp Netafim** for each team.
+
+This updates the existing team record, team directory and any previous membership requests. It retains research, presentations and other existing project information. Check the assignment before confirming. The current interface cannot change an already assigned cohort. A mistaken assignment requires a correction in Firebase Console by the main administrator.
+
+New teams created by Eden automatically belong to Waze. New teams created by Eliana automatically belong to Netafim. The main administrator can choose either cohort when creating a team.
+
+## Verify access before inviting students
+
+- Main Admin sees both cohorts and can change roles.
+- Eden sees only Waze teams and requests, and can review and give feedback on Waze work.
+- Eliana sees only Netafim teams and requests, and can review and give feedback on Netafim work.
+- Eden cannot read private Netafim team work; Eliana cannot read private Waze team work.
+- Students can open only teams where they are approved members.
+- Existing research, project plans and shared document links still work.
+- Cloud Storage remains disabled and the project stays on Spark.
+
+Keep student document links restricted in Google Drive or OneDrive as Firestore permissions do not control external sharing. Review safeguarding, UK GDPR and permissions before pupils use the system.
+
+## Files and technical notes
+
+`app.js` contains the new user roles and cohort filtered dashboards. `firestore.rules` enforces access. `index.html` includes cache version updates. `firebaseConfig.js` retains the existing settings. `logo.png`, `styles.css`, `favicon.png`, and `preview.html` retain the current StartUp design.
+
+The new team and team directory documents include `stream: 'waze'` or `stream: 'netafim'`, and new join requests are tagged with the same stream. The main administrator can assign the stream to legacy teams without resetting the database.
+
+JavaScript syntax and administrator page rendering were checked locally with simulated users. Live Firebase login and access rules still require testing after publication.
+
+Suggested Git commands if working locally:
 
     git add .
-    git commit -m "Use free Firebase Spark plan for StartUp project portal"
+    git commit -m "Add Waze and Netafim cohort administrator roles"
     git push origin main
-
-## Create the administrator account
-
-1. On the live website, create an account with a trusted staff email address.
-2. Open **Firebase Authentication > Users** and copy the new user's UID.
-3. In **Firestore Database > Data > users**, open the document whose ID matches that UID.
-4. Edit the `role` string field from `student` to `admin` and save.
-5. Sign out and sign back in to access the administrator dashboard.
-6. Other staff register normally. The administrator can change their role to `supervisor` and assign them to teams.
-7. Students register, request team membership and wait for administrator approval.
-
-The first administrator must be approved manually in Firebase Console; this cannot be done by the registration form.
-
-## How students submit presentations
-
-1. Create a document or presentation in a school approved Google Drive, OneDrive or similar account.
-2. Use the document's **Share** menu to invite the team members and the assigned educator by their email addresses. Select Viewer or Commenter as appropriate; avoid public sharing where pupil data is involved.
-3. Copy the document link.
-4. In the portal, open the team's **Presentations** tab and save the document name and secure link.
-5. Educators open the link using their authorised accounts and share feedback in the portal.
-
-This method saves links in Firestore, not the files themselves. If a team grants the wrong permissions in Drive or OneDrive, the portal cannot correct those permissions. Test access with the educator's account.
-
-## Safeguarding and privacy
-
-- Use organisationally approved storage and sharing methods for student work.
-- Avoid sharing pupils' documents with "anyone with the link" or on public sites.
-- Verify team membership and roles before approving accounts.
-- Do not use this prototype to record medical, safeguarding or other sensitive personal details.
-- Establish a retention and deletion policy, and review UK GDPR and safeguarding arrangements before inviting pupils.
-- Test that unauthorised accounts cannot read team data, and that only assigned supervisors can post feedback.
-- The first version does not include version history, automatic archiving, account deletion or notifications.
-
-## Testing checklist
-
-- [ ] Website renders without a persistent spinner
-- [ ] Supplied Firebase web configuration is present in firebaseConfig.js
-- [ ] Authentication is enabled and authorised domain added
-- [ ] Firestore database created and security rules published
-- [ ] First administrator profile has `role = admin`
-- [ ] Team and supervisor accounts can be created and assigned
-- [ ] Students can request access and receive approval
-- [ ] Students can save research, progress updates and their project plan
-- [ ] A document link can be shared, opened and removed
-- [ ] Supervisors can leave feedback
-- [ ] A different team's student cannot access private team records
-- [ ] Project remains on Spark and Storage remains disabled
-
-## Included files
-
-| File | Purpose |
-| --- | --- |
-| `index.html` | Website and loading fallback |
-| `styles.css` | Site appearance |
-| `app.js` | Portal application code |
-| `firebaseConfig.js` | Firebase web app configuration placeholders |
-| `firestore.rules` | Firebase database access rules |
-| `preview.html` | Illustrative visual preview |
-| `favicon.png` | Browser icon based on the StartUp logo |
-| `logo.png` | StartUp logo, resized for the website |
-| `README.md` | These instructions |
-
-The application has been checked for JavaScript syntax and ZIP contents. Firebase login and database operations must be tested against your project after deployment.
-
-## Fixes in the branded repair version
-
-- The StartUp logo has fixed height and width, including an inline fallback, so older cached CSS cannot make it fill the login screen.
-- The entry page loads versioned CSS and JavaScript URLs to avoid mixing old and new files from the browser cache.
-- If Firebase or an application script fails, a diagnostic error is shown instead of an endless spinner. Press F12 and open Console to find the original error.
-- The supplied Firebase web configuration is already included. Do not replace it with a placeholder file from an earlier ZIP.
-- The preview now shares the live site CSS rather than an old embedded CSS copy.
-
-If the portal still fails on GitHub Pages, open its live URL, press **F12**, select **Console** and share the *first red error line*. Common issues are an incomplete GitHub upload, a browser extension blocking Google scripts, or a mismatch between published Firestore rules and site configuration.
-
-**Important:** Updating GitHub files does not deploy Firestore rules. Publish `firestore.rules` in the Firebase console separately. Test accounts and data privacy before providing the portal to pupils.
-
-Suggested commit message:
-
-    Repair StartUp portal loading and branding

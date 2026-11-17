@@ -1,10 +1,17 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.3.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/13.3.0/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, query, where, orderBy, serverTimestamp, arrayUnion } from 'https://www.gstatic.com/firebasejs/13.3.0/firebase-firestore.js';
-import { firebaseConfig } from './firebaseConfig.js?v=3';
+import { firebaseConfig } from './firebaseConfig.js?v=4';
 
 const el = document.getElementById('app');
 const toastEl = document.getElementById('toast');
+const STREAMS = [{id:'waze',label:'StartUp Waze'},{id:'netafim',label:'StartUp Netafim'}];
+const ROLES = ['student','supervisor','waze_admin','netafim_admin','admin'];
+function isProgrammeAdmin(){return state.profile?.role==='admin';}
+function adminStream(){return state.profile?.role==='waze_admin'?'waze':state.profile?.role==='netafim_admin'?'netafim':'';}
+function isAdministrator(){return isProgrammeAdmin()||Boolean(adminStream());}
+function streamName(stream){return STREAMS.find(s=>s.id===stream)?.label||'Unassigned cohort';}
+function roleName(role){return ({student:'Student',supervisor:'Supervisor',admin:'Main Administrator',waze_admin:'Waze Admin',netafim_admin:'Netafim Admin'})[role]||role;}
 const CATEGORIES = ['The Middle East','Water','Climate and Sustainability','Misinformation and Media','Culture and Society','Health and Medicine','Food and Agriculture'];
 const STAGES = [
   {id:'discover',name:'Discover',detail:'Form your team and agree on an Israel related dilemma.'},
@@ -49,8 +56,8 @@ function humanDate(value){if(!value)return 'Just now';try {const date=value.toDa
 function toast(msg,error=false){toastEl.textContent=msg;toastEl.className=`toast show${error?' error':''}`;clearTimeout(toast.timer);toast.timer=setTimeout(()=>{toastEl.className='toast';},4200);}
 function errorText(err){const code=err?.code||'';if(code==='permission-denied')return 'Permission denied. Check your team membership and the Firebase security rules.';if(code.includes('network'))return 'A network error occurred. Please try again.';if(code.includes('auth/invalid-credential'))return 'The email or password is incorrect.';if(code.includes('auth/email-already-in-use'))return 'An account already exists with this email address.';if(code.includes('auth/weak-password'))return 'Use a stronger password of at least six characters.';return (err?.message||'Something went wrong. Please try again.').replace(/^Firebase: /,'').slice(0,210);}
 async function withBusy(fn){if(state.loading)return;state.loading=true;document.querySelectorAll('button[type="submit"]').forEach(b=>b.disabled=true);try {await fn();}catch(e){console.error(e);toast(errorText(e),true);}finally{state.loading=false;document.querySelectorAll('button[type="submit"]').forEach(b=>b.disabled=false);}}
-function brand(){return `<img src="logo.png?v=3" width="64" height="64" style="width:64px;height:64px;max-width:64px;max-height:64px;object-fit:contain;flex-shrink:0" alt="StartUp logo" class="brandlogo"><span>StartUp<small>StandWithUs UK · Project Portal</small></span>`;}
-function shell(body){return `<div class="shell"><header class="topbar"><div class="topinner"><a href="#" class="brand" data-action="home">${brand()}</a><div class="topactions"><span class="muted" style="font-size:12px">${h(state.profile?.name||'')}</span>${state.profile?.role==='admin'?`<button class="btn small outline" data-action="admin">Admin</button>`:''}<button class="btn small outline" data-action="home">Dashboard</button><button class="btn small secondary" data-action="signout">Sign out</button></div></div></header><main class="container">${body}</main><footer class="foot">StandWithUs UK | StartUp Project Portal</footer></div>`;}
+function brand(){return `<img src="logo.png?v=4" width="64" height="64" style="width:64px;height:64px;max-width:64px;max-height:64px;object-fit:contain;flex-shrink:0" alt="StartUp logo" class="brandlogo"><span>StartUp<small>StandWithUs UK · Project Portal</small></span>`;}
+function shell(body){return `<div class="shell"><header class="topbar"><div class="topinner"><a href="#" class="brand" data-action="home">${brand()}</a><div class="topactions"><span class="muted" style="font-size:12px">${h(state.profile?.name||'')}</span>${isAdministrator()?`<button class="btn small outline" data-action="admin">${h(isProgrammeAdmin()?'Main Admin':roleName(state.profile.role))}</button>`:''}<button class="btn small outline" data-action="home">Dashboard</button><button class="btn small secondary" data-action="signout">Sign out</button></div></div></header><main class="container">${body}</main><footer class="foot">StandWithUs UK | StartUp Project Portal</footer></div>`;}
 function hero(kicker,title,description){return `<section class="hero"><div class="eyebrow">${h(kicker)}</div><h1>${h(title)}</h1><p>${h(description)}</p></section>`;}
 function empty(title,text){return `<div class="empty"><strong>${h(title)}</strong>${h(text)}</div>`;}
 function progress(teams){const stages=teams.map(t=>Number(t.progress||0));return stages.length?Math.round(stages.reduce((a,b)=>a+b,0)/stages.length):0;}
@@ -59,7 +66,7 @@ function render(){
   if(!state.user){el.innerHTML=renderAuth();return;}
   if(!state.profile){el.innerHTML=shell(`<div class="card narrow"><h2>Account setup required</h2><p>Your login is recognised, but a user profile has not been created yet. If you are an administrator, follow the bootstrap instructions in README.md. If you just registered, try refreshing this page.</p><button class="btn primary" data-action="reload">Try again</button></div>`);return;}
   if(state.view==='team'&&state.team){el.innerHTML=shell(renderTeam());return;}
-  if(state.view==='admin'&&state.profile.role==='admin'){el.innerHTML=shell(renderAdmin());return;}
+  if(state.view==='admin'&&isAdministrator()){el.innerHTML=shell(renderAdmin());return;}
   el.innerHTML=shell(renderDashboard());
 }
 function renderAuth(){
@@ -113,22 +120,29 @@ async function loadAccount(){
 async function loadDashboard(){
   const uid=state.user.uid;
   const profile=state.profile;
+  const stream=adminStream();
   let teamSnaps=[];
-  if(profile.role==='admin')teamSnaps=(await getDocs(collection(db,'teams'))).docs;
+  if(isProgrammeAdmin())teamSnaps=(await getDocs(collection(db,'teams'))).docs;
+  else if(stream)teamSnaps=(await getDocs(query(collection(db,'teams'),where('stream','==',stream)))).docs;
   else if(profile.role==='supervisor')teamSnaps=(await getDocs(query(collection(db,'teams'),where('supervisorUids','array-contains',uid)))).docs;
   else teamSnaps=(await getDocs(query(collection(db,'teams'),where('memberUids','array-contains',uid)))).docs;
   state.teams=teamSnaps.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.name.localeCompare(b.name));
-  // The team cards show real stage progress stored in each team's project document.
   await Promise.all(state.teams.map(async team=>{
     const project=await getDoc(doc(db,'projects',team.id));
     if(project.exists()){team.stageStatuses=project.data().stageStatuses||DEFAULT_STAGES;team.dilemma=project.data().dilemma||team.dilemma;}
   }));
-  const dirs=await getDocs(collection(db,'teamDirectory'));
-  state.directory=dirs.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.name.localeCompare(b.name));
-  if(profile.role==='admin'){
+  let directorySnaps=[];
+  if(stream)directorySnaps=(await getDocs(query(collection(db,'teamDirectory'),where('stream','==',stream)))).docs;
+  else if(isProgrammeAdmin()||profile.role==='student'||profile.role==='supervisor')directorySnaps=(await getDocs(collection(db,'teamDirectory'))).docs;
+  state.directory=directorySnaps.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.name.localeCompare(b.name));
+  if(isProgrammeAdmin()){
     const [rq,us]=await Promise.all([getDocs(collection(db,'requests')),getDocs(collection(db,'users'))]);
     state.requests=rq.docs.map(d=>({id:d.id,...d.data()}));
     state.users=us.docs.map(d=>({id:d.id,...d.data()}));
+  }else if(stream){
+    const rq=await getDocs(query(collection(db,'requests'),where('stream','==',stream)));
+    state.requests=rq.docs.map(d=>({id:d.id,...d.data()}));
+    state.users=[];
   }else{
     state.requests=[];state.users=[];
     if(profile.role==='student'){
@@ -136,24 +150,25 @@ async function loadDashboard(){
       state.requests=rq.docs.map(d=>({id:d.id,...d.data()}));
     }
   }
-  state.view=state.view==='admin'&&profile.role==='admin'?'admin':'dashboard';
+  state.view=state.view==='admin'&&isAdministrator()?'admin':'dashboard';
   render();
 }
 function teamCard(t){const completed=STAGES.filter(s=>t?.stageStatuses?.[s.id]==='complete').length;const perc=Math.round(100*completed/STAGES.length);return `<article class="card teamcard"><div class="teammeta"><span class="pill">${h(t.category||'StartUp')}</span><span class="pill dim">${h(t.cohort||'2026/27')}</span></div><h3>${h(t.name)}</h3><p class="muted cardsummary">${h((t.dilemma||'The team is preparing its dilemma statement.').slice(0,140))}</p><div class="row between subtle"><span>Project stages completed</span><strong>${completed}/${STAGES.length}</strong></div><div class="progressline"><span style="width:${perc}%"></span></div><div class="row between" style="margin-top:15px"><span class="subtle">${(t.memberUids||[]).length} students</span><button class="btn primary small" data-action="openTeam" data-id="${h(t.id)}">Open workspace</button></div></article>`;}
 function renderDashboard(){
   const first=(state.profile.name||'there').split(' ')[0];
-  const isAdmin=state.profile.role==='admin';
-  const roleLabel=isAdmin?'ADMINISTRATOR':state.profile.role==='supervisor'?'SUPERVISOR':'STUDENT';
+  const admin=isAdministrator();
+  const stream=adminStream();
+  const roleLabel=admin?roleName(state.profile.role).toUpperCase():state.profile.role==='supervisor'?'SUPERVISOR':'STUDENT';
   const pending=state.requests.filter(r=>r.status==='pending').length;
-  let sections=hero(`STARTUP PROJECT PORTAL · ${roleLabel}`,`Welcome back, ${first}.`,state.profile.role==='student'?'Every great idea begins with a real problem. Follow your team’s progress and build your StartUp here.':'Follow your teams, review their research and help them turn ideas into solutions.');
-  if(isAdmin)sections+=`<div class="pagehead"><h2>Programme overview</h2><button class="btn primary" data-action="admin">Manage programme</button></div><div class="statrow"><div class="stat"><strong>${state.teams.length}</strong><span>Project teams</span></div><div class="stat"><strong>${state.users.filter(u=>u.role==='student').length}</strong><span>Student accounts</span></div><div class="stat"><strong>${pending}</strong><span>Access requests waiting</span></div></div>`;
-  sections+=`<div class="pagehead"><h2>${isAdmin?'All teams':state.profile.role==='supervisor'?'Your supervised teams':'Your team'}</h2><button class="btn outline small" data-action="reload">Refresh</button></div>`;
-  sections+=state.teams.length?`<div class="grid">${state.teams.map(teamCard).join('')}</div>`:empty('No team assigned yet',state.profile.role==='student'?'Choose your team below and request access. A supervisor will approve it.':'An administrator can create teams and assign supervisors.');
+  let sections=hero(`STARTUP PROJECT PORTAL · ${roleLabel}`,`Welcome back, ${first}.`,state.profile.role==='student'?'Every great idea begins with a real problem. Follow your team’s progress and build your StartUp here.':stream?`Manage your ${streamName(stream)} teams, review their research and help students turn ideas into solutions.`:'Follow your teams, review their research and help them turn ideas into solutions.');
+  if(admin)sections+=`<div class="pagehead"><h2>${stream?streamName(stream)+' overview':'Programme overview'}</h2><button class="btn primary" data-action="admin">Manage ${stream?'your cohort':'programme'}</button></div><div class="statrow"><div class="stat"><strong>${state.teams.length}</strong><span>Project teams</span></div>${isProgrammeAdmin()?`<div class="stat"><strong>${state.users.filter(u=>u.role==='student').length}</strong><span>Student accounts</span></div>`:''}<div class="stat"><strong>${pending}</strong><span>Access requests waiting</span></div></div>`;
+  sections+=`<div class="pagehead"><h2>${admin?(stream?'Your cohort teams':'All teams'):state.profile.role==='supervisor'?'Your supervised teams':'Your team'}</h2><button class="btn outline small" data-action="reload">Refresh</button></div>`;
+  sections+=state.teams.length?`<div class="grid">${state.teams.map(teamCard).join('')}</div>`:empty('No team assigned yet',state.profile.role==='student'?'Choose your team below and request access. An administrator will approve it.':'Create a team from the administration dashboard or ask the main administrator to assign an existing team to your cohort.');
   if(state.profile.role==='student'){
     const joined=new Set(state.teams.map(t=>t.id));
     const pendingIds=new Set(state.requests.filter(r=>r.status==='pending').map(r=>r.teamId));
-    const available=state.directory.filter(d=>!joined.has(d.id));
-    sections+=`<div class="pagehead"><h2>Join a team</h2></div><div class="card narrow"><p class="muted" style="margin-top:0">Select your team from the list below. Your request must be approved before you can see its work.</p>${available.length?`<form data-form="join"><div class="field"><label for="teamid">Team</label><select name="teamid" id="teamid" required><option value="">Select your group</option>${available.map(d=>`<option value="${h(d.id)}">${h(d.name)} (${h(d.cohort||'StartUp')})${pendingIds.has(d.id)?' · request pending':''}</option>`).join('')}</select></div><button class="btn primary" type="submit">Request team access</button></form>`:empty('No available teams','Your administrator has not published any team names yet.')}${state.requests.filter(r=>r.status==='pending').length?`<p class="hint">Pending requests: ${state.requests.filter(r=>r.status==='pending').map(r=>h(state.directory.find(d=>d.id===r.teamId)?.name||'Team')).join(', ')}</p>`:''}</div>`;
+    const available=state.directory.filter(d=>!joined.has(d.id)&&['waze','netafim'].includes(d.stream));
+    sections+=`<div class="pagehead"><h2>Join a team</h2></div><div class="card narrow"><p class="muted" style="margin-top:0">Select your team from the list below. Your request must be approved before you can see its work.</p>${available.length?`<form data-form="join"><div class="field"><label for="teamid">Team</label><select name="teamid" id="teamid" required><option value="">Select your group</option>${available.map(d=>`<option value="${h(d.id)}">${h(d.name)} (${h(streamName(d.stream))})${pendingIds.has(d.id)?' · request pending':''}</option>`).join('')}</select></div><button class="btn primary" type="submit">Request team access</button></form>`:empty('No available teams','Your administrator has not published any teams for joining yet.')}${state.requests.filter(r=>r.status==='pending').length?`<p class="hint">Pending requests: ${state.requests.filter(r=>r.status==='pending').map(r=>h(state.directory.find(d=>d.id===r.teamId)?.name||'Team')).join(', ')}</p>`:''}</div>`;
   }
   return sections;
 }
@@ -178,7 +193,7 @@ async function loadTeam(){
   state.feedback=fb.docs.map(d=>({id:d.id,...d.data()}));
   render();
 }
-function supervisorHere(){return state.profile.role==='admin'||state.profile.role==='supervisor'&&(state.team.supervisorUids||[]).includes(state.user.uid);}
+function supervisorHere(){return isProgrammeAdmin()||(Boolean(adminStream())&&state.team?.stream===adminStream())||state.profile.role==='supervisor'&&(state.team.supervisorUids||[]).includes(state.user.uid);}
 function renderTeam(){
   const t=state.team,p=state.project||{};
   const stageStatuses=p.stageStatuses||DEFAULT_STAGES;
@@ -196,14 +211,27 @@ function renderUploads(){return `<div class="grid2"><div class="card"><h3 class=
 function renderFeedback(){return `<div class="grid2">${supervisorHere()?`<div class="card"><h3 class="sectiontitle">Leave supervisor feedback</h3><p class="hint">Explain what the team has done well and what should be improved before the next stage.</p><form data-form="feedback"><div class="field"><label>Feedback heading</label><input name="title" maxlength="140" required placeholder="For example: First draft review"></div><div class="field"><label>Feedback and next steps</label><textarea name="body" maxlength="3500" required placeholder="What is strong? What should be changed? What needs to happen next?"></textarea></div><button class="btn primary" type="submit">Share feedback</button></form></div>`:`<div class="card"><h3 class="sectiontitle">Supervisor feedback</h3><p class="muted">Your supervisors can leave feedback here. Use the Progress journal to ask questions or flag anything you need help with.</p><div class="note">Supervisors can see all research, project updates and document links shared by your team.</div></div>`}<div class="card"><div class="sectionhead"><h3 class="sectiontitle">Feedback history</h3><span class="pill">${state.feedback.length} comments</span></div>${state.feedback.length?state.feedback.map(x=>`<article class="item"><h4>${h(x.title)}</h4><div class="meta">${h(x.authorName)} · ${humanDate(x.createdAt)}</div><p>${h(x.body)}</p></article>`).join(''):empty('No feedback yet','Supervisor comments will be shown here.')}</div></div>`;}
 
 function renderAdmin(){
- const pending=state.requests.filter(r=>r.status==='pending');
- const supervisors=state.users.filter(u=>u.role==='supervisor'||u.role==='admin');
- return `${hero('PROGRAMME ADMINISTRATION','Manage StartUp teams','Create team workspaces, approve membership requests and assign supervisors.')}
- <div class="pagehead"><h2>Programme management</h2><button data-action="reload" class="btn outline small">Refresh data</button></div>
- <div class="admincols"><div class="card"><h3 class="sectiontitle">Create a team</h3><form data-form="newTeam"><div class="field"><label>Team name</label><input name="name" required maxlength="90" placeholder="For example: Waze Team A"></div><div class="field"><label>Cohort</label><input name="cohort" maxlength="35" value="2026/27" required></div><div class="field"><label>Subject (optional)</label><select name="category"><option value="">Not selected yet</option>${opts(CATEGORIES,'')}</select></div><div class="field"><label>Assign supervisor</label><select name="supervisor"><option value="">Assign later</option>${supervisors.map(u=>`<option value="${h(u.id)}">${h(u.name)} (${h(u.email)})</option>`).join('')}</select><p class="hint">Supervisors must register an account and be promoted below before they can be assigned.</p></div><button class="btn primary" type="submit">Create team</button></form></div>
- <div class="card"><div class="sectionhead"><h3 class="sectiontitle">Membership requests</h3><span class="pill">${pending.length} pending</span></div>${pending.length?pending.map(r=>`<div class="item"><h4>${h(r.studentName||r.email||'Student')}</h4><p>${h(r.email||'')}</p><div class="subtle">Requested: ${h(state.directory.find(t=>t.id===r.teamId)?.name||'Unknown team')}</div><div class="row" style="margin-top:11px"><button class="btn primary small" data-action="approve" data-id="${h(r.id)}">Approve</button><button class="btn danger small" data-action="reject" data-id="${h(r.id)}">Decline</button></div></div>`).join(''):empty('No pending requests','Student requests will appear here for approval.')}</div></div>
- <div class="pagehead"><h2>Team assignments</h2></div><div class="card tablewrap">${state.teams.length?`<table class="table"><thead><tr><th>Team</th><th>Students</th><th>Supervisor</th><th>Assign supervisor</th></tr></thead><tbody>${state.teams.map(t=>`<tr><td><strong>${h(t.name)}</strong><br><span class="subtle">${h(t.cohort||'')}</span></td><td>${(t.memberUids||[]).length}</td><td>${h((t.supervisorUids||[]).map(uid=>state.users.find(u=>u.id===uid)?.name||'Supervisor').join(', ')||'None')}</td><td><select data-team-supervisor="${h(t.id)}" aria-label="Assign supervisor to ${h(t.name)}"><option value="">Select an educator</option>${supervisors.map(u=>`<option value="${h(u.id)}">${h(u.name)}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table>`:empty('No teams yet','Use the form above to create the first team.')}</div>
- <div class="pagehead"><h2>Registered people</h2></div><div class="card tablewrap">${state.users.length?`<table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Change role</th></tr></thead><tbody>${state.users.sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(u=>`<tr><td>${h(u.name)}</td><td>${h(u.email)}</td><td><span class="pill dim">${h(u.role)}</span></td><td>${u.id===state.user.uid?'Your account':`<select data-user-role="${h(u.id)}" aria-label="Change role for ${h(u.name)}">${opts(['student','supervisor','admin'],u.role)}</select>`}</td></tr>`).join('')}</tbody></table>`:empty('No accounts','Student and supervisor accounts will appear here.')}</div><div class="alert warning" style="margin-top:16px">Only give administrator access to trusted staff. Administrators can view all teams, assign students and change other accounts' roles.</div>`;
+ const main=isProgrammeAdmin();
+ const stream=adminStream();
+ const pending=state.requests.filter(r=>r.status==='pending'&&(!stream||r.stream===stream));
+ const supervisors=state.users.filter(u=>['supervisor','admin','waze_admin','netafim_admin'].includes(u.role));
+ const scopeOptions=main?`<select name="stream" required><option value="">Select Waze or Netafim</option>${STREAMS.map(s=>`<option value="${s.id}">${h(s.label)}</option>`).join('')}</select>`:`<input type="hidden" name="stream" value="${h(stream)}"><div class="pill good">${h(streamName(stream))}</div>`;
+ const supervisorOptions=main?`<div class="field"><label>Supervisor (optional)</label><select name="supervisor"><option value="">Use the cohort administrator</option>${supervisors.map(u=>`<option value="${h(u.id)}">${h(u.name)} (${h(u.email)})</option>`).join('')}</select><p class="hint">If no supervisor is selected, the designated Waze or Netafim administrator can manage the team automatically.</p></div>`:`<p class="note">You will automatically manage this team's research, membership requests and feedback.</p>`;
+ const teamRows=state.teams.map(t=>{
+   const names=(t.supervisorUids||[]).map(uid=>state.users.find(u=>u.id===uid)?.name||(uid===state.user.uid?state.profile.name:'Assigned educator'));
+   const cohortDisplay=t.stream?streamName(t.stream):'Not assigned';
+   const streamAssignment=main&&!t.stream?`<select data-team-stream="${h(t.id)}" aria-label="Assign cohort to ${h(t.name)}"><option value="">Assign cohort</option>${STREAMS.map(s=>`<option value="${s.id}">${h(s.label)}</option>`).join('')}</select>`:`<span class="pill ${t.stream?'good':'dim'}">${h(cohortDisplay)}</span>`;
+   const selectSupervisor=main&&t.stream?`<select data-team-supervisor="${h(t.id)}" aria-label="Assign supervisor to ${h(t.name)}"><option value="">Add supervisor</option>${supervisors.map(u=>`<option value="${h(u.id)}">${h(u.name)}</option>`).join('')}</select>`:'';
+   return `<tr><td><strong>${h(t.name)}</strong><br><span class="subtle">${h(t.cohort||'2026/27')}</span></td><td>${streamAssignment}</td><td>${(t.memberUids||[]).length}</td><td>${h(names.join(', ')||(t.stream?streamName(t.stream)+' Admin':'Unassigned'))}</td>${main?`<td>${selectSupervisor}</td>`:''}</tr>`;
+ }).join('');
+ const people=main?`<div class="pagehead"><h2>Registered people</h2></div><div class="card tablewrap">${state.users.length?`<table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Change role</th></tr></thead><tbody>${[...state.users].sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(u=>`<tr><td>${h(u.name)}</td><td>${h(u.email)}</td><td><span class="pill dim">${h(roleName(u.role))}</span></td><td>${u.id===state.user.uid?'Your account':`<select data-user-role="${h(u.id)}" aria-label="Change role for ${h(u.name)}">${ROLES.map(role=>`<option value="${h(role)}" ${role===u.role?'selected':''}>${h(roleName(role))}</option>`).join('')}</select>`}</td></tr>`).join('')}</tbody></table>`:empty('No accounts','Accounts will appear here after registration.')}</div><div class="alert warning" style="margin-top:16px">Main administrators manage staff roles across both cohorts. Assign Eden as Waze Admin and Eliana as Netafim Admin. Cohort administrators cannot change account roles or access the other cohort’s private work.</div>`:'';
+ return `${hero('PROGRAMME ADMINISTRATION',stream?`Manage ${streamName(stream)}`:'Manage StartUp teams',stream?'Manage your teams, student requests and feedback within your cohort.':'Oversee both cohorts, assign teams to Waze or Netafim and manage staff permissions.')}
+ <div class="pagehead"><h2>${stream?streamName(stream)+' management':'Programme management'}</h2><button data-action="reload" class="btn outline small">Refresh data</button></div>
+ <div class="admincols"><div class="card"><h3 class="sectiontitle">Create a team</h3><form data-form="newTeam"><div class="field"><label>Team name</label><input name="name" required maxlength="90" placeholder="For example: ${stream==='netafim'?'Netafim':'Waze'} Team 1"></div><div class="field"><label>StartUp group</label>${scopeOptions}</div><div class="field"><label>Programme year</label><input name="cohort" maxlength="35" value="2026/27" required></div><div class="field"><label>Subject (optional)</label><select name="category"><option value="">Not selected yet</option>${opts(CATEGORIES,'')}</select></div>${supervisorOptions}<button class="btn primary" type="submit">Create team</button></form></div>
+ <div class="card"><div class="sectionhead"><h3 class="sectiontitle">Membership requests</h3><span class="pill">${pending.length} pending</span></div>${pending.length?pending.map(r=>`<div class="item"><h4>${h(r.studentName||r.email||'Student')}</h4><p>${h(r.email||'')}</p><div class="subtle">Requested: ${h(state.directory.find(t=>t.id===r.teamId)?.name||state.teams.find(t=>t.id===r.teamId)?.name||'Unknown team')}</div><div class="row" style="margin-top:11px"><button class="btn primary small" data-action="approve" data-id="${h(r.id)}">Approve</button><button class="btn danger small" data-action="reject" data-id="${h(r.id)}">Decline</button></div></div>`).join(''):empty('No pending requests','Requests to join your teams will appear here.')}</div></div>
+ <div class="pagehead"><h2>Team assignments</h2></div><div class="card tablewrap">${state.teams.length?`<table class="table"><thead><tr><th>Team</th><th>StartUp Group</th><th>Students</th><th>Supervisor</th>${main?'<th>Add supervisor</th>':''}</tr></thead><tbody>${teamRows}</tbody></table>`:empty('No teams yet','Create your first team using the form above.')}</div>
+ ${main&&state.teams.some(t=>!t.stream)?`<div class="alert warning" style="margin-top:15px">Existing teams without a StartUp group must be assigned to Waze or Netafim by the main administrator before cohort administrators can see them. This does not delete existing student work.</div>`:''}
+ ${people}`;
 }
 
 async function createPost(section,data){await addDoc(collection(db,'teams',state.team.id,section),{...data,authorUid:state.user.uid,authorName:state.profile.name,createdAt:serverTimestamp()});await loadTeam();}
@@ -215,7 +243,7 @@ document.addEventListener('click',async event=>{
  event.preventDefault();const action=b.dataset.action,id=b.dataset.id;
  if(action==='toggleSignup'){state.signUp=!state.signUp;render();return;}
  if(action==='home'){state.team=null;state.view='dashboard';await withBusy(loadDashboard);return;}
- if(action==='admin'){state.view='admin';render();return;}
+ if(action==='admin'){if(!isAdministrator())return;state.view='admin';render();return;}
  if(action==='signout'){await withBusy(()=>signOut(auth));return;}
  if(action==='reload'){await withBusy(loadAccount);return;}
  if(action==='openTeam'){await withBusy(()=>openTeam(id));return;}
@@ -226,7 +254,7 @@ document.addEventListener('click',async event=>{
    await withBusy(async()=>{await sendPasswordResetEmail(auth,email.trim());toast('If the email is registered, a password reset message will be sent.');});return;
  }
  if(action==='approve'||action==='reject'){
-   const request=state.requests.find(r=>r.id===id);if(!request)return;
+   const request=state.requests.find(r=>r.id===id);if(!request||(!isProgrammeAdmin()&&request.stream!==adminStream()))return;
    await withBusy(async()=>{
      if(action==='approve'){
        await updateDoc(doc(db,'teams',request.teamId),{memberUids:arrayUnion(request.uid)});
@@ -254,11 +282,42 @@ document.addEventListener('change',async event=>{
      await loadTeam();toast('Stage status updated.');
    });return;
  }
+ if(node.matches('select[data-team-stream]')){
+   if(!isProgrammeAdmin()||!['waze','netafim'].includes(node.value))return;
+   const teamId=node.dataset.teamStream;
+   const team=state.teams.find(t=>t.id===teamId);
+   if(!team||team.stream)return;
+   const stream=node.value;
+   if(!confirm(`Assign ${team.name} to ${streamName(stream)}? Cohort administrators will then see its work.`)){node.value='';return;}
+   await withBusy(async()=>{
+     await updateDoc(doc(db,'teams',teamId),{stream});
+     await updateDoc(doc(db,'teamDirectory',teamId),{stream});
+     // Tag older membership requests so the correct cohort administrator can review them.
+     const legacy=await getDocs(query(collection(db,'requests'),where('teamId','==',teamId)));
+     for(const r of legacy.docs)await updateDoc(doc(db,'requests',r.id),{stream});
+     await loadDashboard();toast(`${team.name} assigned to ${streamName(stream)}.`);
+   });return;
+ }
  if(node.matches('select[data-team-supervisor]')){
+   if(!isProgrammeAdmin())return;
    if(!node.value)return;
+   const team=state.teams.find(t=>t.id===node.dataset.teamSupervisor);
+   const educator=state.users.find(u=>u.id===node.value);
+   if(!team||!team.stream||!educator)return;
+   if(['waze_admin','netafim_admin'].includes(educator.role)&&educator.role!==`${team.stream}_admin`)return toast('This cohort administrator can only be assigned to their own StartUp group.',true);
    await withBusy(async()=>{await updateDoc(doc(db,'teams',node.dataset.teamSupervisor),{supervisorUids:arrayUnion(node.value)});await loadDashboard();toast('Supervisor assigned.');});return;
  }
  if(node.matches('select[data-user-role]')){
+   if(!isProgrammeAdmin()||!ROLES.includes(node.value))return;
+   const account=state.users.find(u=>u.id===node.dataset.userRole);
+   if(!account)return;
+   const assignedEmail=(account.email||'').toLowerCase();
+   const expectedEmail=node.value==='waze_admin'?'edeni@standwithus.com':node.value==='netafim_admin'?'egarfunkel@standwithus.com':'';
+   if(expectedEmail&&assignedEmail!==expectedEmail){
+     node.value=account.role;
+     toast('This cohort administrator role is reserved for the designated educator.',true);
+     return;
+   }
    await withBusy(async()=>{await updateDoc(doc(db,'users',node.dataset.userRole),{role:node.value});await loadDashboard();toast('Account role updated.');});return;
  }
 });
@@ -278,16 +337,22 @@ document.addEventListener('submit',async event=>{
    });return;
  }
  if(type==='join'){
-   const teamId=formValue(form,'teamid');if(!state.directory.find(t=>t.id===teamId))return toast('Choose a team.',true);
+   const teamId=formValue(form,'teamid');const teamDir=state.directory.find(t=>t.id===teamId);if(!teamDir||!['waze','netafim'].includes(teamDir.stream))return toast('Choose an available team.',true);
    if(state.requests.some(r=>r.teamId===teamId&&r.status==='pending'))return toast('Your request is already pending.',true);
-   await withBusy(async()=>{await setDoc(doc(db,'requests',`${state.user.uid}_${teamId}`),{uid:state.user.uid,teamId,status:'pending',studentName:state.profile.name,email:state.user.email,createdAt:serverTimestamp()});await loadDashboard();toast('Request sent for approval.');});return;
+   await withBusy(async()=>{await setDoc(doc(db,'requests',`${state.user.uid}_${teamId}`),{uid:state.user.uid,teamId,stream:teamDir.stream,status:'pending',studentName:state.profile.name,email:state.user.email,createdAt:serverTimestamp()});await loadDashboard();toast('Request sent for approval.');});return;
  }
  if(type==='newTeam'){
    await withBusy(async()=>{
      const name=formValue(form,'name'),cohort=formValue(form,'cohort'),category=formValue(form,'category'),supervisor=formValue(form,'supervisor');
-     const team=await addDoc(collection(db,'teams'),{name,cohort,category,dilemma:'',memberUids:[],supervisorUids:supervisor?[supervisor]:[],createdBy:state.user.uid,createdAt:serverTimestamp()});
+     const stream=isProgrammeAdmin()?formValue(form,'stream'):adminStream();
+     if(!['waze','netafim'].includes(stream))return toast('Select Waze or Netafim.',true);
+     const cohortAdmin=state.users.find(u=>u.role===`${stream}_admin`);
+     const selectedSupervisor=state.users.find(u=>u.id===supervisor);
+     if(supervisor&&(!selectedSupervisor||(['waze_admin','netafim_admin'].includes(selectedSupervisor.role)&&selectedSupervisor.role!==`${stream}_admin`)))return toast('Choose an educator authorised for this cohort.',true);
+     const supervisorUids=supervisor?[supervisor]:isProgrammeAdmin()?(cohortAdmin?[cohortAdmin.id]:[]):[state.user.uid];
+     const team=await addDoc(collection(db,'teams'),{name,cohort,stream,category,dilemma:'',memberUids:[],supervisorUids,createdBy:state.user.uid,createdAt:serverTimestamp()});
      await Promise.all([
-       setDoc(doc(db,'teamDirectory',team.id),{name,cohort,createdAt:serverTimestamp()}),
+       setDoc(doc(db,'teamDirectory',team.id),{name,cohort,stream,createdAt:serverTimestamp()}),
        setDoc(doc(db,'projects',team.id),{name:'',category,dilemma:'',summary:'',existing:'',gap:'',solution:'',audience:'',operation:'',partners:'',impact:'',nextSteps:'',stageStatuses:DEFAULT_STAGES,updatedBy:state.user.uid,updatedAt:serverTimestamp()})
      ]);
      await loadDashboard();toast('Team created. Students can now request access.');

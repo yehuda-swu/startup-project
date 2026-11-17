@@ -3,19 +3,45 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function me() { return request.auth.uid; }
-    function userExists() { return signedIn() && exists(/databases/$(database)/documents/users/$(me())); }
-    function admin() { return userExists() && get(/databases/$(database)/documents/users/$(me())).data.role == 'admin'; }
-    function teamData(teamId) { return get(/databases/$(database)/documents/teams/$(teamId)).data; }
+    function userPath() { return /databases/$(database)/documents/users/$(me()); }
+    function userExists() { return signedIn() && exists(userPath()); }
+    function myRole() { return userExists() ? get(userPath()).data.get('role','') : ''; }
+    function mainAdmin() { return myRole() == 'admin'; }
+    function scopedAdmin() { return myRole() in ['waze_admin','netafim_admin']; }
+    function myStream() {
+      return myRole() == 'waze_admin' ? 'waze' :
+        myRole() == 'netafim_admin' ? 'netafim' : '';
+    }
+    function validStream(stream) { return stream in ['waze','netafim']; }
+    function managesStream(stream) {
+      return mainAdmin() || (scopedAdmin() && myStream() == stream);
+    }
+    function teamPath(teamId) { return /databases/$(database)/documents/teams/$(teamId); }
+    function teamExists(teamId) { return exists(teamPath(teamId)); }
+    function teamData(teamId) { return get(teamPath(teamId)).data; }
+    function managesTeam(teamId) {
+      return mainAdmin() ||
+        (scopedAdmin() && teamExists(teamId) &&
+         teamData(teamId).get('stream','') == myStream());
+    }
     function isTeamMember(teamId) {
-      return signedIn() && (
-        admin() || me() in teamData(teamId).memberUids ||
+      return signedIn() && teamExists(teamId) &&
+        (!scopedAdmin() || teamData(teamId).get('stream','') == myStream()) && (
+        managesTeam(teamId) ||
+        me() in teamData(teamId).memberUids ||
         me() in teamData(teamId).supervisorUids
       );
     }
     function isTeamSupervisor(teamId) {
-      return signedIn() && (admin() || me() in teamData(teamId).supervisorUids);
+      return signedIn() && teamExists(teamId) &&
+        (!scopedAdmin() || teamData(teamId).get('stream','') == myStream()) && (
+        managesTeam(teamId) ||
+        me() in teamData(teamId).supervisorUids
+      );
     }
 
+    // Staff roles can only be assigned by the programme administrator.
+    // Cohort administrators cannot list all users or promote accounts.
     match /users/{uid} {
       allow create: if signedIn() && me() == uid &&
         request.resource.data.keys().hasOnly(['name','email','role','createdAt']) &&
@@ -23,33 +49,69 @@ service cloud.firestore {
         request.resource.data.email == request.auth.token.email &&
         request.resource.data.name is string &&
         request.resource.data.name.size() <= 70;
-      allow get: if signedIn() && (me() == uid || admin());
-      allow list: if admin();
-      allow update: if admin() || (
-        signedIn() && me() == uid &&
+      allow get: if signedIn() && (me() == uid || mainAdmin());
+      allow list: if mainAdmin();
+      allow update: if mainAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role']) &&
+        request.resource.data.role in ['student','supervisor','waze_admin','netafim_admin','admin'] &&
+        (request.resource.data.role != 'waze_admin' || resource.data.email == 'edeni@standwithus.com') &&
+        (request.resource.data.role != 'netafim_admin' || resource.data.email == 'egarfunkel@standwithus.com')
+        || (signedIn() && me() == uid &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']) &&
-        request.resource.data.name is string && request.resource.data.name.size() <= 70
-      );
+        request.resource.data.name is string && request.resource.data.name.size() <= 70);
       allow delete: if false;
     }
 
+    // Directory entries do not contain private research or member names.
+    // Students can see group names to request access.
     match /teamDirectory/{teamId} {
-      allow read: if signedIn() && userExists();
-      allow write: if admin();
+      allow get, list: if userExists() && (
+        mainAdmin() || myRole() in ['student','supervisor'] ||
+        (scopedAdmin() && resource.data.get('stream','') == myStream())
+      );
+      allow create: if userExists() &&
+        managesTeam(teamId) &&
+        validStream(request.resource.data.stream) &&
+        request.resource.data.stream == teamData(teamId).get('stream','');
+      allow update: if userExists() && managesTeam(teamId) &&
+        request.resource.data.get('stream','') == teamData(teamId).get('stream','');
+      allow delete: if mainAdmin();
     }
 
     match /teams/{teamId} {
       allow get, list: if signedIn() && (
-        admin() || me() in resource.data.memberUids || me() in resource.data.supervisorUids
+        mainAdmin() ||
+        (scopedAdmin() && resource.data.get('stream','') == myStream()) ||
+        (!scopedAdmin() && (me() in resource.data.memberUids ||
+        me() in resource.data.supervisorUids))
       );
-      allow create, update, delete: if admin();
+      allow create: if userExists() &&
+        validStream(request.resource.data.stream) &&
+        managesStream(request.resource.data.stream) &&
+        request.resource.data.keys().hasOnly([
+          'name','cohort','stream','category','dilemma','memberUids',
+          'supervisorUids','createdBy','createdAt'
+        ]) &&
+        request.resource.data.name is string && request.resource.data.name.size() > 0 &&
+        request.resource.data.memberUids == [] &&
+        request.resource.data.supervisorUids is list &&
+        request.resource.data.createdBy == me() &&
+        (mainAdmin() || me() in request.resource.data.supervisorUids);
+      allow update: if (mainAdmin() && teamExists(resource.data.teamId)) || (
+        scopedAdmin() && resource.data.get('stream','') == myStream() &&
+        request.resource.data.get('stream','') == resource.data.get('stream','') &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberUids']) &&
+        request.resource.data.memberUids is list
+      );
+      allow delete: if mainAdmin();
 
       match /updates/{updateId} {
         allow read: if isTeamMember(teamId);
         allow create: if isTeamMember(teamId) &&
           request.resource.data.authorUid == me() &&
           request.resource.data.keys().hasOnly(['type','title','body','authorUid','authorName','createdAt']);
-        allow delete: if isTeamSupervisor(teamId) || (isTeamMember(teamId) && resource.data.authorUid == me());
+        allow delete: if isTeamSupervisor(teamId) ||
+          (isTeamMember(teamId) && resource.data.authorUid == me());
         allow update: if false;
       }
       match /resources/{sourceId} {
@@ -57,14 +119,17 @@ service cloud.firestore {
         allow create: if isTeamMember(teamId) &&
           request.resource.data.authorUid == me() &&
           request.resource.data.keys().hasOnly(['title','url','notes','authorUid','authorName','createdAt']);
-        allow delete: if isTeamSupervisor(teamId) || (isTeamMember(teamId) && resource.data.authorUid == me());
+        allow delete: if isTeamSupervisor(teamId) ||
+          (isTeamMember(teamId) && resource.data.authorUid == me());
         allow update: if false;
       }
       match /uploads/{uploadId} {
         allow read: if isTeamMember(teamId);
         allow create: if isTeamMember(teamId) &&
           request.resource.data.authorUid == me() &&
-          request.resource.data.keys().hasOnly(['kind','description','url','fileName','authorUid','authorName','createdAt']) &&
+          request.resource.data.keys().hasOnly([
+            'kind','description','url','fileName','authorUid','authorName','createdAt'
+          ]) &&
           request.resource.data.kind == 'link' &&
           request.resource.data.description is string &&
           request.resource.data.description.size() > 0 &&
@@ -73,7 +138,8 @@ service cloud.firestore {
           request.resource.data.url.matches('https://.*') &&
           request.resource.data.url.size() <= 2048;
         allow update: if false;
-        allow delete: if isTeamSupervisor(teamId) || (isTeamMember(teamId) && resource.data.authorUid == me());
+        allow delete: if isTeamSupervisor(teamId) ||
+          (isTeamMember(teamId) && resource.data.authorUid == me());
       }
       match /feedback/{feedbackId} {
         allow read: if isTeamMember(teamId);
@@ -92,18 +158,33 @@ service cloud.firestore {
           'audience','operation','partners','impact','nextSteps',
           'stageStatuses','updatedBy','updatedAt'
         ]) && request.resource.data.updatedBy == me();
-      allow delete: if admin();
+      allow delete: if mainAdmin();
     }
 
+    // The stream copied onto each request must match the actual team.
+    // This prevents a student from making a Waze request for a Netafim team.
     match /requests/{requestId} {
-      allow create: if signedIn() && userExists() &&
+      allow create: if signedIn() && userExists() && myRole() == 'student' &&
         request.resource.data.uid == me() &&
         requestId == me() + '_' + request.resource.data.teamId &&
+        teamExists(request.resource.data.teamId) &&
+        validStream(request.resource.data.stream) &&
+        request.resource.data.stream == teamData(request.resource.data.teamId).get('stream','') &&
         request.resource.data.status == 'pending' &&
-        request.resource.data.keys().hasOnly(['uid','teamId','status','studentName','email','createdAt']) &&
+        request.resource.data.keys().hasOnly([
+          'uid','teamId','stream','status','studentName','email','createdAt'
+        ]) &&
         request.resource.data.email == request.auth.token.email;
-      allow get, list: if admin() || (signedIn() && resource.data.uid == me());
-      allow update: if admin();
+      allow get, list: if mainAdmin() ||
+        (scopedAdmin() && resource.data.get('stream','') == myStream()) ||
+        (signedIn() && resource.data.uid == me());
+      allow update: if (mainAdmin() && teamExists(resource.data.teamId)) || (
+        scopedAdmin() && resource.data.get('stream','') == myStream() &&
+        resource.data.get('stream','') == teamData(resource.data.teamId).get('stream','') &&
+        request.resource.data.get('stream','') == resource.data.get('stream','') &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','reviewedAt']) &&
+        request.resource.data.status in ['approved','declined']
+      );
       allow delete: if false;
     }
 
