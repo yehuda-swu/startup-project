@@ -1,7 +1,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.3.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/13.3.0/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, query, where, orderBy, serverTimestamp, arrayUnion } from 'https://www.gstatic.com/firebasejs/13.3.0/firebase-firestore.js';
-import { firebaseConfig } from './firebaseConfig.js';
+import { firebaseConfig } from './firebaseConfig.js?v=3';
 
 const el = document.getElementById('app');
 const toastEl = document.getElementById('toast');
@@ -34,6 +34,10 @@ if(configured){
     state.user=user;
     if(!user){ state.profile=null; state.team=null; state.view='dashboard'; render(); return; }
     await loadAccount();
+  },err => {
+    console.error('Firebase authentication initialisation failed:',err);
+    window.StartUpShowError?.('Sign in is unavailable',
+      'Firebase Authentication could not start. Check that Email/Password is enabled and the app configuration is correct.',err);
   });
 }else render();
 
@@ -45,7 +49,7 @@ function humanDate(value){if(!value)return 'Just now';try {const date=value.toDa
 function toast(msg,error=false){toastEl.textContent=msg;toastEl.className=`toast show${error?' error':''}`;clearTimeout(toast.timer);toast.timer=setTimeout(()=>{toastEl.className='toast';},4200);}
 function errorText(err){const code=err?.code||'';if(code==='permission-denied')return 'Permission denied. Check your team membership and the Firebase security rules.';if(code.includes('network'))return 'A network error occurred. Please try again.';if(code.includes('auth/invalid-credential'))return 'The email or password is incorrect.';if(code.includes('auth/email-already-in-use'))return 'An account already exists with this email address.';if(code.includes('auth/weak-password'))return 'Use a stronger password of at least six characters.';return (err?.message||'Something went wrong. Please try again.').replace(/^Firebase: /,'').slice(0,210);}
 async function withBusy(fn){if(state.loading)return;state.loading=true;document.querySelectorAll('button[type="submit"]').forEach(b=>b.disabled=true);try {await fn();}catch(e){console.error(e);toast(errorText(e),true);}finally{state.loading=false;document.querySelectorAll('button[type="submit"]').forEach(b=>b.disabled=false);}}
-function brand(){return `<img src="logo.png" alt="StartUp logo" class="brandlogo"><span>StartUp<small>StandWithUs UK · Project Portal</small></span>`;}
+function brand(){return `<img src="logo.png?v=3" width="64" height="64" style="width:64px;height:64px;max-width:64px;max-height:64px;object-fit:contain;flex-shrink:0" alt="StartUp logo" class="brandlogo"><span>StartUp<small>StandWithUs UK · Project Portal</small></span>`;}
 function shell(body){return `<div class="shell"><header class="topbar"><div class="topinner"><a href="#" class="brand" data-action="home">${brand()}</a><div class="topactions"><span class="muted" style="font-size:12px">${h(state.profile?.name||'')}</span>${state.profile?.role==='admin'?`<button class="btn small outline" data-action="admin">Admin</button>`:''}<button class="btn small outline" data-action="home">Dashboard</button><button class="btn small secondary" data-action="signout">Sign out</button></div></div></header><main class="container">${body}</main><footer class="foot">StandWithUs UK | StartUp Project Portal</footer></div>`;}
 function hero(kicker,title,description){return `<section class="hero"><div class="eyebrow">${h(kicker)}</div><h1>${h(title)}</h1><p>${h(description)}</p></section>`;}
 function empty(title,text){return `<div class="empty"><strong>${h(title)}</strong>${h(text)}</div>`;}
@@ -58,7 +62,45 @@ function render(){
   if(state.view==='admin'&&state.profile.role==='admin'){el.innerHTML=shell(renderAdmin());return;}
   el.innerHTML=shell(renderDashboard());
 }
-function renderAuth(){return `<main class="authwrap"><section class="authaside"><a href="#" class="brand">${brand()}</a><div><div class="eyebrow" style="color:#ace7ff">STARTUP 2026/27</div><h1>Research. Create.<br>Make an impact.</h1><p>One place for your team to explore a real dilemma involving Israel, develop your ideas and get feedback from your supervisor.</p><div class="authfeatures"><div class="authfeature">01 &nbsp; Discover your challenge</div><div class="authfeature">02 &nbsp; Share your team's research</div><div class="authfeature">03 &nbsp; Develop and present your StartUp</div></div></div><div style="font-size:12px;opacity:.7">StandWithUs UK · Explore Programme</div></section><section class="authmain"><div class="authbox"><div class="eyebrow">Welcome to StartUp</div><h2>${state.signUp?'Create your account':'Sign in to your workspace'}</h2><p>${state.signUp?'Create a student account. Your supervisor will approve your request to join a team.':'Your team's research and latest updates are waiting for you.'}</p><form data-form="auth" class="stack" style="margin-top:25px">${state.signUp?`<div class="field"><label for="name">Your name</label><input name="name" id="name" autocomplete="name" maxlength="70" required placeholder="First name and surname"></div>`:''}<div class="field"><label for="email">Email address</label><input name="email" id="email" type="email" autocomplete="email" required placeholder="you@example.com"></div><div class="field"><label for="password">Password</label><input name="password" id="password" type="password" minlength="6" autocomplete="${state.signUp?'new-password':'current-password'}" required placeholder="At least six characters"></div><button class="btn primary" type="submit">${state.signUp?'Create student account':'Sign in'}</button></form><div class="divider"></div><button data-action="toggleSignup" class="btn outline" style="width:100%">${state.signUp?'Already registered? Sign in':'New student? Create an account'}</button>${!state.signUp?`<div style="text-align:center;margin-top:17px"><button data-action="resetPassword" class="btn small secondary">Forgotten your password?</button></div>`:''}<p class="hint">Student accounts cannot access projects until an administrator approves their team membership.</p></div></section></main>`;}
+function renderAuth(){
+  const creating=Boolean(state.signUp);
+  const nameInput=creating ? `<div class="field"><label for="name">Your name</label><input name="name" id="name" autocomplete="name" maxlength="70" required placeholder="First name and surname"></div>` : '';
+  const resetButton=creating ? '' : `<div style="text-align:center;margin-top:17px"><button data-action="resetPassword" class="btn small secondary">Forgotten your password?</button></div>`;
+  const heading=creating?'Create your account':'Sign in to your workspace';
+  const intro=creating?'Create a student account. Your administrator will approve your request to join a team.':'Your team’s research and latest updates are waiting for you.';
+  const submitText=creating?'Create student account':'Sign in';
+  const toggleText=creating?'Already registered? Sign in':'New student? Create an account';
+  const passwordAutoComplete=creating?'new-password':'current-password';
+  return `<main class="authwrap">
+    <section class="authaside">
+      <a href="#" class="brand">${brand()}</a>
+      <div><div class="eyebrow" style="color:#dcf7ff">STARTUP 2026/27</div>
+        <h1>Research. Create.<br>Make an impact.</h1>
+        <p>One place for your team to explore a real dilemma involving Israel, develop your ideas and get feedback from your supervisor.</p>
+        <div class="authfeatures">
+          <div class="authfeature">01 &nbsp; Discover your challenge</div>
+          <div class="authfeature">02 &nbsp; Share your team's research</div>
+          <div class="authfeature">03 &nbsp; Develop and present your StartUp</div>
+        </div>
+      </div>
+      <div style="font-size:12px;opacity:.86">StandWithUs UK · Explore Programme</div>
+    </section>
+    <section class="authmain"><div class="authbox">
+      <div class="eyebrow">Welcome to StartUp</div>
+      <h2>${heading}</h2><p>${intro}</p>
+      <form data-form="auth" class="stack" style="margin-top:25px">
+        ${nameInput}
+        <div class="field"><label for="email">Email address</label><input name="email" id="email" type="email" autocomplete="email" required placeholder="you@example.com"></div>
+        <div class="field"><label for="password">Password</label><input name="password" id="password" type="password" minlength="6" autocomplete="${passwordAutoComplete}" required placeholder="At least six characters"></div>
+        <button class="btn primary" type="submit">${submitText}</button>
+      </form>
+      <div class="divider"></div>
+      <button data-action="toggleSignup" class="btn outline" style="width:100%">${toggleText}</button>
+      ${resetButton}
+      <p class="hint">Student accounts cannot access projects until an administrator approves their team membership.</p>
+    </div></section>
+  </main>`;
+}
 
 async function loadAccount(){
   try{

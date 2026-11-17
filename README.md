@@ -21,7 +21,7 @@ This edition uses **Firebase Authentication**, **Cloud Firestore** and **GitHub 
 
 1. Open https://console.firebase.google.com/ and create a **new project** for StartUp. Keep the **Spark** plan and do not link a billing account.
 2. On Project Overview, click the **Web app** icon `</>` to register a web app. Firebase Hosting is not required. Copy the web app configuration.
-3. Open `firebaseConfig.js` and replace the example values with the matching fields. Preserve `export const firebaseConfig = {` at the top. The client web configuration is public; NEVER include any Firebase Admin SDK service account keys.
+3. `firebaseConfig.js` is already populated with the StartUp Firebase web settings shared by the organiser. Do not replace it with the Firebase example containing `import` or `initializeApp`. Firebase web configuration is public. NEVER upload an admin service account JSON or private key.
 4. Go to **Authentication > Sign in method** and enable **Email/Password**.
 5. Go to **Firestore Database > Create database**. Choose **Standard edition**, an appropriate UK or European region where supported, and **production mode**.
 6. Go to **Firestore Database > Rules**, replace the initial rules with the contents of `firestore.rules`, then press **Publish**. Uploading the rules file to GitHub alone does not deploy these rules.
@@ -81,7 +81,7 @@ This method saves links in Firestore, not the files themselves. If a team grants
 ## Testing checklist
 
 - [ ] Website renders without a persistent spinner
-- [ ] Firebase web configuration has been inserted
+- [ ] Supplied Firebase web configuration is present in firebaseConfig.js
 - [ ] Authentication is enabled and authorised domain added
 - [ ] Firestore database created and security rules published
 - [ ] First administrator profile has `role = admin`
@@ -103,7 +103,24 @@ This method saves links in Firestore, not the files themselves. If a team grants
 | `firebaseConfig.js` | Firebase web app configuration placeholders |
 | `firestore.rules` | Firebase database access rules |
 | `preview.html` | Illustrative visual preview |
-| `favicon.svg` | Browser icon |
+| `favicon.png` | Browser icon based on the StartUp logo |
+| `logo.png` | StartUp logo, resized for the website |
 | `README.md` | These instructions |
 
 The application has been checked for JavaScript syntax and ZIP contents. Firebase login and database operations must be tested against your project after deployment.
+
+## Fixes in the branded repair version
+
+- The StartUp logo has fixed height and width, including an inline fallback, so older cached CSS cannot make it fill the login screen.
+- The entry page loads versioned CSS and JavaScript URLs to avoid mixing old and new files from the browser cache.
+- If Firebase or an application script fails, a diagnostic error is shown instead of an endless spinner. Press F12 and open Console to find the original error.
+- The supplied Firebase web configuration is already included. Do not replace it with a placeholder file from an earlier ZIP.
+- The preview now shares the live site CSS rather than an old embedded CSS copy.
+
+If the portal still fails on GitHub Pages, open its live URL, press **F12**, select **Console** and share the *first red error line*. Common issues are an incomplete GitHub upload, a browser extension blocking Google scripts, or a mismatch between published Firestore rules and site configuration.
+
+**Important:** Updating GitHub files does not deploy Firestore rules. Publish `firestore.rules` in the Firebase console separately. Test accounts and data privacy before providing the portal to pupils.
+
+Suggested commit message:
+
+    Repair StartUp portal loading and branding

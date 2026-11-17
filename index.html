@@ -6,55 +6,69 @@
   <meta name="theme-color" content="#0073ab">
   <meta name="description" content="StandWithUs UK StartUp Project Portal">
   <title>StartUp | Project Portal</title>
-  <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="favicon.png?v=3" type="image/png">
+  <link rel="stylesheet" href="styles.css?v=3">
+  <style>
+    /* Essential fallback styles if a previous stylesheet is cached */
+    .brandlogo{width:64px!important;height:64px!important;max-width:64px!important;max-height:64px!important;object-fit:contain!important;flex-shrink:0!important}
+    .authaside .brandlogo{width:76px!important;height:76px!important;max-width:76px!important;max-height:76px!important}
+    @media(max-width:650px){.brandlogo,.authaside .brandlogo{width:56px!important;height:56px!important;max-width:56px!important;max-height:56px!important}}
+  </style>
 </head>
 <body>
-  <div id="app"><div class="loading"><span class="spinner"></span><p>Opening the StartUp portal…</p></div></div>
+  <div id="app"><div class="loading"><span class="spinner"></span><p>Opening your StartUp Portal…</p></div></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script>
-    (function () {
-      const root = document.getElementById('app');
-      let finished = false;
-      const screen = (heading, message, isLocal) => {
-        if (finished || !root.querySelector('.loading')) return;
-        finished = true;
-        root.innerHTML = `
-          <main class="authwrap">
-            <section class="authaside">
-              <div class="brand"><img src="logo.png" alt="StartUp logo" class="brandlogo"><span>StartUp<small>StandWithUs UK · Project Portal</small></span></div>
-              <div><div class="eyebrow" style="color:#e6f8ff">STARTUP 2026/27</div><h1>Research. Create.<br>Make an impact.</h1>
-              <p>A place for teams to develop ideas, share research and learn from their supervisors.</p></div>
-              <div>DISCOVER · INVESTIGATE · INNOVATE · PITCH</div>
-            </section>
-            <section class="authmain"><div class="authbox">
-              <div class="eyebrow">${isLocal ? 'Visual preview' : 'Connection help'}</div>
-              <h2>${heading}</h2><p>${message}</p>
-              <a class="btn primary" href="preview.html">View the example team workspace</a>
-              ${isLocal ? '' : '<a class="btn outline" href="index.html" style="margin-top:12px">Try opening the portal again</a>'}
-              <div class="alert" style="margin-top:22px">The visual preview does not need Firebase. To enable real team accounts, research sharing and document links, publish this website on GitHub Pages and complete the Firebase setup in README.md.</div>
-            </div></section>
-          </main>`;
-      };
-      if (window.location.protocol === 'file:') {
-        screen('Open the project preview', 'You are viewing the downloaded website files. The live portal needs an HTTPS website and Firebase configuration. You can still explore the example workspace now.', true);
-        return;
+   (function () {
+     const root=document.getElementById('app');
+     const logo='<img src="logo.png?v=3" width="76" height="76" class="brandlogo" style="width:76px;height:76px;max-width:76px;max-height:76px;object-fit:contain" alt="StartUp logo">';
+     function escapeHTML(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+     window.StartUpShowError=function(heading,message,error){
+       if(!root.querySelector('.loading') && !root.querySelector('[data-portal-error]'))return;
+       if(error)console.error('StartUp Portal:',error);
+       const detail=error?.message||'';
+       root.innerHTML=`<main class="authwrap" data-portal-error>
+          <section class="authaside">
+            <div class="brand">${logo}<span>StartUp<small>StandWithUs UK · Project Portal</small></span></div>
+            <div><div class="eyebrow" style="color:#e6f8ff">STARTUP 2026/27</div>
+               <h1>Research. Create.<br>Make an impact.</h1>
+               <p>Our shared space for team research, creative ideas and supervisor feedback.</p></div>
+            <div style="font-size:12px;opacity:.85">StandWithUs UK · Explore Programme</div>
+          </section>
+          <section class="authmain"><div class="authbox">
+            <div class="eyebrow">Connection help</div>
+            <h2>${escapeHTML(heading)}</h2>
+            <p>${escapeHTML(message)}</p>
+            ${detail?`<div class="alert warning" style="overflow-wrap:anywhere">Technical detail: ${escapeHTML(detail).slice(0,350)}</div>`:''}
+            <div class="stack" style="margin-top:20px">
+              <button type="button" class="btn primary" onclick="location.reload()">Try again</button>
+              <a class="btn outline" href="preview.html?v=3">View an example workspace</a>
+            </div>
+            <p class="hint">If the error continues, check that GitHub contains <strong>app.js</strong>, <strong>styles.css</strong>, and <strong>firebaseConfig.js</strong> beside <strong>index.html</strong>. We can also check the browser console using F12.</p>
+          </div></section>
+        </main>`;
+     };
+     if(location.protocol==='file:'){
+       window.StartUpShowError('Open the example workspace','The downloaded files cannot connect to Firebase when opened directly from your computer. Publish them through GitHub Pages, or view the example workspace.');
+       return;
+     }
+     window.setTimeout(()=>{
+       if(root.querySelector('.loading')) window.StartUpShowError('Sign in did not finish loading','The Firebase sign in service is not responding. Check your internet connection and Firebase settings.');
+     },15000);
+   })();
+  </script>
+  <script type="module">
+    if(location.protocol!=='file:'){
+      try{ await import('./app.js?v=3'); }
+      catch(error){
+        console.error('Failed to load StartUp application:',error);
+        const m=String(error?.message||'');
+        let description='A required application script failed to load. Make sure all files were uploaded together to the GitHub repository.';
+        if(/firebaseConfig|export|SyntaxError|does not provide an export|Unexpected token/i.test(m))description='A JavaScript file could not be loaded correctly. Verify that firebaseConfig.js contains export const firebaseConfig and that all files are the latest version.';
+        else if(/fetch|network|Failed to load/i.test(m))description='The browser could not load one or more JavaScript modules. Check that the GitHub files are present and that access to Google Firebase libraries is not blocked.';
+        window.StartUpShowError('The portal could not start',description,error);
       }
-      const module = document.createElement('script');
-      module.type = 'module';
-      module.src = 'app.js';
-      module.onerror = () => screen('The portal could not start', 'A required application script could not be loaded. This sometimes happens in restricted file previews or when internet access is unavailable.', false);
-      document.body.appendChild(module);
-      window.addEventListener('error', event => {
-        if (event.target === window) screen('The portal could not start', 'An application error prevented the website from opening. Check the browser console or try the visual preview.', false);
-      }, true);
-      window.addEventListener('unhandledrejection', () => {
-        screen('The portal could not connect', 'A service did not respond while opening the portal. Check your Firebase configuration and network connection.', false);
-      });
-      window.setTimeout(() => {
-        screen('The portal is taking too long to open', 'The sign in service or application scripts did not respond. You can view the example workspace now, or try reloading the page.', false);
-      }, 8500);
-    })();
+    }
   </script>
 </body>
 </html>
